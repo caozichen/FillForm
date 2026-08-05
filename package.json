@@ -1,0 +1,23 @@
+{
+  "name": "formpilot-nova-wxt",
+  "version": "0.1.0",
+  "description": "FormPilot Nova rebuilt in a WXT project shell.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "check:hashids": "node scripts/check-hashids-crypto.mjs",
+    "zip": "wxt zip",
+    "postinstall": "wxt prepare"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "wxt": "^0.20.27"
+  },
+  "dependencies": {
+    "hashids": "^2.3.0",
+    "jsqr": "^1.4.0",
+    "zxing-wasm": "^3.1.0"
+  }
+}

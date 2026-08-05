@@ -1,0 +1,23 @@
+node_modules/
+.npm-cache/
+.output/
+.wxt/
+dist/
+*.zip
+.env
+.env.*
+!.env.example
+
+# Local test artifacts and browser profiles
+.tmp/
+.tmp-formpilot-chrome-profile*/
+outputs/
+
+# Local agent metadata
+.agents/
+.codex/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.log

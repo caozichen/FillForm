@@ -1,0 +1,70 @@
+import { defineConfig } from 'wxt';
+
+export default defineConfig({
+  manifest: {
+    name: 'FillForm — 一键填充与二维码助手',
+    version: '3.1.0',
+    description: '用于网页表单一键填充与二维码识别的 Chrome 插件。Copyright © 2026 灵析测试部',
+    icons: {
+      16: 'icons/icon-16.png',
+      32: 'icons/icon-32.png',
+      48: 'icons/icon-48.png',
+      128: 'icons/icon-128.png'
+    },
+    action: {
+      default_title: 'FillForm',
+      default_popup: 'popup.html',
+      default_icon: {
+        16: 'icons/icon-16.png',
+        32: 'icons/icon-32.png',
+        48: 'icons/icon-48.png',
+        128: 'icons/icon-128.png'
+      }
+    },
+    background: {
+      service_worker: 'background.js',
+      type: 'module'
+    },
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    },
+    options_ui: {
+      page: 'options.html',
+      open_in_tab: true
+    },
+    side_panel: {
+      default_path: 'sidepanel.html'
+    },
+    permissions: ['activeTab', 'scripting', 'tabs', 'storage', 'sidePanel', 'offscreen'],
+    host_permissions: ['<all_urls>'],
+    content_scripts: [
+      {
+        matches: ['<all_urls>'],
+        js: [
+          'adapters/native.js',
+          'adapters/element-ui.js',
+          'adapters/arco-design.js',
+          'adapters/custom-renderer.js',
+          'content/scan.js',
+          'content/fill.js',
+          'content/agent.js'
+        ],
+        run_at: 'document_idle'
+      }
+    ],
+    web_accessible_resources: [
+      {
+        resources: [
+          'popup.html',
+          'popup.js',
+          'popup.css',
+          'ui/overlay.css',
+          'template-center.html',
+          'template-center.js',
+          'template-center.css'
+        ],
+        matches: ['<all_urls>']
+      }
+    ]
+  }
+});
