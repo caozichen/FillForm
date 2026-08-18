@@ -1,5 +1,5 @@
 (function initFormPilotV2Fill() {
-  const FORM_PILOT_V2_FILL_BUILD = '2026-03-28-01';
+  const FORM_PILOT_V2_FILL_BUILD = '2026-08-18-date-01';
   if (window.FormPilotV2Fill?.__build === FORM_PILOT_V2_FILL_BUILD) return;
 
   const utils = window.FormPilotV2Utils || {};
@@ -298,6 +298,79 @@
     return `${y}-${m}-${d}`;
   }
 
+  function toStartOfDay(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  function shiftCalendarMonths(date, amount = 0) {
+    const source = toStartOfDay(date);
+    if (!source) return null;
+    const shifted = new Date(source.getFullYear(), source.getMonth() + Number(amount || 0), 1);
+    const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate();
+    shifted.setDate(Math.min(source.getDate(), lastDay));
+    return shifted;
+  }
+
+  function getHalfYearDateWindow(referenceDate = new Date()) {
+    const today = toStartOfDay(referenceDate) || toStartOfDay(new Date());
+    return {
+      min: shiftCalendarMonths(today, -6),
+      max: shiftCalendarMonths(today, 6),
+      today
+    };
+  }
+
+  function normalizeDateCollectType(field = {}) {
+    const explicit = String(field?.meta?.dateCollectType || field?.meta?.collectType || field?.collectType || '').toLowerCase();
+    if (['ymd', 'ym', 'md'].includes(explicit)) return explicit;
+    const roles = Array.isArray(field?.meta?.segmentRoles) ? field.meta.segmentRoles : [];
+    if (roles.includes('year')) return roles.includes('day') ? 'ymd' : 'ym';
+    if (roles.includes('month') && roles.includes('day')) return 'md';
+    return 'ymd';
+  }
+
+  function parseDateForCollectType(value = '', collectType = 'ymd', referenceDate = new Date()) {
+    const raw = String(value || '').trim();
+    const fullDate = parseYmdDate(raw);
+    if (fullDate) return fullDate;
+    const reference = toStartOfDay(referenceDate) || toStartOfDay(new Date());
+
+    if (collectType === 'ym') {
+      const match = raw.match(/^(\d{4})[-/.](\d{1,2})$/);
+      if (!match) return null;
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      if (month < 1 || month > 12) return null;
+      const lastDay = new Date(year, month, 0).getDate();
+      return toStartOfDay(new Date(year, month - 1, Math.min(reference.getDate(), lastDay)));
+    }
+
+    if (collectType === 'md') {
+      const match = raw.match(/^(\d{1,2})[-/.](\d{1,2})$/);
+      if (!match) return null;
+      const month = Number(match[1]);
+      const day = Number(match[2]);
+      const { min, max } = getHalfYearDateWindow(reference);
+      const candidates = [reference.getFullYear() - 1, reference.getFullYear(), reference.getFullYear() + 1]
+        .map((year) => new Date(year, month - 1, day))
+        .filter((date) => date.getMonth() === month - 1 && date.getDate() === day)
+        .map(toStartOfDay)
+        .filter((date) => date && date.getTime() >= min.getTime() && date.getTime() <= max.getTime())
+        .sort((a, b) => Math.abs(a.getTime() - reference.getTime()) - Math.abs(b.getTime() - reference.getTime()));
+      return candidates[0] || null;
+    }
+    return null;
+  }
+
+  function clampDateToBounds(date, minDate, maxDate) {
+    let next = toStartOfDay(date);
+    if (!next) return null;
+    if (minDate && next.getTime() < minDate.getTime()) next = new Date(minDate);
+    if (maxDate && next.getTime() > maxDate.getTime()) next = new Date(maxDate);
+    return next;
+  }
+
   function inferNumericLikeConstraint(el, constraints = {}) {
     if (!(el instanceof Element)) return false;
     const tag = (el.tagName || '').toLowerCase();
@@ -349,8 +422,6 @@
     const minLength = Number(constraints?.minLength || el.getAttribute('minlength') || 0);
     let value = normText(rawValue);
     const hint = `${hintText} ${constraints?.hintText || ''} ${constraints?.type || ''} ${constraints?.kind || ''} ${constraints?.fieldKind || ''} ${el.getAttribute('aria-label') || ''} ${el.getAttribute('placeholder') || ''} ${el.getAttribute('title') || ''}`;
-    const oneYearRequired = !!constraints?.oneYearRequired || Number(constraints?.olderThanDays || 0) >= 365;
-
     if (inferNumericLikeConstraint(el, constraints)) {
       if (isBankCardHintText(hint)) {
         let cardNo = value.replace(/\D/g, '');
@@ -385,20 +456,14 @@
       let dt = parseYmdDate(value);
       const minDate = parseYmdDate(String(constraints?.min || el.getAttribute('min') || ''));
       const maxDate = parseYmdDate(String(constraints?.max || el.getAttribute('max') || ''));
-      let upperBound = maxDate;
-      if (oneYearRequired) {
-        const cutoff = new Date();
-        cutoff.setHours(0, 0, 0, 0);
-        cutoff.setDate(cutoff.getDate() - Math.max(366, Number(constraints?.olderThanDays || 366)));
-        if (!upperBound || cutoff.getTime() < upperBound.getTime()) upperBound = cutoff;
-      }
+      const halfYearWindow = getHalfYearDateWindow();
+      const lowerBound = minDate && minDate.getTime() > halfYearWindow.min.getTime() ? minDate : halfYearWindow.min;
+      const upperBound = maxDate && maxDate.getTime() < halfYearWindow.max.getTime() ? maxDate : halfYearWindow.max;
+      if (lowerBound.getTime() > upperBound.getTime()) return value;
       if (!dt) {
-        dt = upperBound ? new Date(upperBound) : new Date();
-        dt.setDate(dt.getDate() - randomInt(3, 300));
+        dt = clampDateToBounds(new Date(), lowerBound, upperBound);
       }
-      if (minDate && dt.getTime() < minDate.getTime()) dt = new Date(minDate);
-      if (upperBound && dt.getTime() > upperBound.getTime()) dt = new Date(upperBound);
-      if (minDate && dt.getTime() < minDate.getTime()) dt = new Date(minDate);
+      dt = clampDateToBounds(dt, lowerBound, upperBound);
       return formatYmdDate(dt) || value;
     }
 
@@ -2953,14 +3018,36 @@
     return normText(button.textContent || '').includes(value);
   }
 
-  function parseDatePartsForWidget(value = '') {
-    const parsed = parseYmdDate(String(value || ''));
-    const date = parsed || new Date(1995, 5, 18);
+  function parseDatePartsForWidget(value = '', collectType = 'ymd') {
+    const raw = String(value || '').trim();
+    const halfYearWindow = getHalfYearDateWindow();
+    let date = parseDateForCollectType(raw, collectType, halfYearWindow.today) || new Date(halfYearWindow.today);
+    date = clampDateToBounds(date, halfYearWindow.min, halfYearWindow.max) || new Date(halfYearWindow.today);
+    if (collectType === 'md') {
+      const mdMatch = raw.match(/^(\d{1,2})[-/.](\d{1,2})$/);
+      if (mdMatch) {
+        const reference = new Date(2000, Number(mdMatch[1]) - 1, Number(mdMatch[2]));
+        if (reference.getMonth() === Number(mdMatch[1]) - 1 && reference.getDate() === Number(mdMatch[2])) {
+          date = reference;
+        }
+      }
+    }
     return {
       year: String(date.getFullYear()),
       month: String(date.getMonth() + 1),
       day: String(date.getDate())
     };
+  }
+
+  function birthdaySegmentMatches(trigger, role = '', targetText = '') {
+    const display = readSelectLikeDisplayText(trigger);
+    if (!display || isPlaceholderDisplayText(display)) return false;
+    const numbers = display.match(/\d+/g) || [];
+    if (!numbers.length) return false;
+    const targetNumber = Number(targetText);
+    if (!Number.isFinite(targetNumber)) return false;
+    if (role === 'year') return numbers.some((value) => Number(value) === targetNumber && String(value).length >= 4);
+    return numbers.some((value) => Number(value) === targetNumber);
   }
 
   async function fillBirthdayField(field, value, root, strictScope, settings = {}) {
@@ -2969,8 +3056,10 @@
     const roles = Array.isArray(meta.segmentRoles) ? meta.segmentRoles : ['year', 'month', 'day'];
     const domIds = Array.isArray(meta.segmentDomIds) ? meta.segmentDomIds : [];
     const selectors = Array.isArray(meta.segmentSelectors) ? meta.segmentSelectors : [];
-    const parts = parseDatePartsForWidget(value);
-    const nodes = [];
+    const collectType = normalizeDateCollectType(field);
+    const parts = parseDatePartsForWidget(value, collectType);
+    const segments = [];
+    const seenNodes = new Set();
     for (let i = 0; i < Math.max(roles.length, domIds.length, selectors.length); i += 1) {
       let node = findByDomId(domIds[i], root, strictScope);
       if (!node && selectors[i]) {
@@ -2980,12 +3069,18 @@
           node = null;
         }
       }
-      if (node instanceof Element) nodes.push(node);
+      if (node instanceof Element && !seenNodes.has(node)) {
+        seenNodes.add(node);
+        segments.push({ node, role: roles[i] || '' });
+      }
     }
-    if (!nodes.length) {
-      nodes.push(...queryAll(container, 'button[role="combobox"], [role="combobox"]').filter((node) => node instanceof Element && visible(node) && !node.closest('.fb-runtime-control-clear')).slice(0, 3));
+    if (!segments.length) {
+      const fallbackNodes = queryAll(container, 'button[role="combobox"], [role="combobox"]')
+        .filter((node) => node instanceof Element && visible(node) && !node.closest('.fb-runtime-control-clear'))
+        .slice(0, roles.length || 3);
+      fallbackNodes.forEach((node, index) => segments.push({ node, role: roles[index] || '' }));
     }
-    if (!nodes.length) return buildFillResult(false, '生日年月日控件未定位');
+    if (!segments.length) return buildFillResult(false, '生日日期控件未定位');
 
     const calendarTypeNodes = [
       ...((Array.isArray(meta.calendarTypeDomIds) ? meta.calendarTypeDomIds : []).map((id) => findByDomId(id, root, strictScope)).filter(Boolean)),
@@ -2995,21 +3090,25 @@
     if (solar instanceof HTMLElement && !isWidgetNodeSelected(solar)) {
       fireOptionClick(solar);
       await sleep(80);
-      markWidgetNodeSelected(solar, 'birthday-calendar', 1);
+      if (!isWidgetNodeSelected(solar)) {
+        return buildFillResult(false, '生日控件未能切换到公历', { target: solar });
+      }
     }
 
     let applied = 0;
-    for (let i = 0; i < nodes.length; i += 1) {
-      const node = nodes[i];
-      const role = roles[i] || (i === 0 ? 'year' : (i === 1 ? 'month' : 'day'));
+    for (let i = 0; i < segments.length; i += 1) {
+      const { node, role: segmentRole } = segments[i];
+      const role = segmentRole || (i === 0 ? 'year' : (i === 1 ? 'month' : 'day'));
       const targetText = parts[role] || '';
       if (!targetText) continue;
       const trigger = resolveSelectTriggerNode(node);
       const result = await selectComboboxOption(trigger, targetText, { ...field, kind: 'select', meta: { ...(field.meta || {}), birthdaySegment: role, selectLike: true } }, settings);
-      if (result?.ok || setButtonDisplayText(trigger, role === 'year' ? targetText : targetText)) applied += 1;
+      await sleep(80);
+      if (result?.ok && birthdaySegmentMatches(trigger, role, targetText)) applied += 1;
       await sleep(100);
     }
-    return buildFillResult(applied >= Math.min(3, nodes.length), applied ? `生日已填充 ${applied} 段` : '生日控件填充未生效', { target: nodes[0] || null });
+    const expected = segments.filter(({ role }) => !!parts[role]).length;
+    return buildFillResult(applied === expected && expected > 0, applied ? `生日已真实选择 ${applied}/${expected} 段` : '生日控件填充未生效', { target: segments[0]?.node || null });
   }
 
   async function fillCascaderField(field, value, root, strictScope, settings = {}) {
@@ -3661,43 +3760,128 @@
     return { ok, reason: ok ? '时间面板已选择' : '时间面板选择后展示值未更新', selectedText: display, clicked };
   }
 
+  function getVisibleLingxiDateOverlay() {
+    return Array.from(document.querySelectorAll('[data-fb-date-overlay]'))
+      .filter((node) => node instanceof HTMLElement && visible(node))
+      .pop() || null;
+  }
+
+  function parseLingxiDateOverlayPeriod(overlay) {
+    if (!(overlay instanceof Element)) return null;
+    const header = Array.from(overlay.querySelectorAll('.fb-font-medium, [class*="font-medium"], div, span'))
+      .filter((node) => node instanceof HTMLElement && visible(node) && !node.querySelector('button'))
+      .map((node) => normText(node.textContent || ''))
+      .find((text) => /\b\d{4}\b/.test(text) && text.length <= 32) || '';
+    const yearMonth = header.match(/(\d{4})\s*(?:年|[-/.])\s*(\d{1,2})\s*月?/);
+    if (yearMonth) return { year: Number(yearMonth[1]), month: Number(yearMonth[2]) };
+    const yearOnly = header.match(/\b(\d{4})\b/);
+    if (!yearOnly) return null;
+    const englishMonths = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    const lowerHeader = header.toLowerCase();
+    const englishMonthIndex = englishMonths.findIndex((month) => lowerHeader.includes(month));
+    return { year: Number(yearOnly[1]), month: englishMonthIndex >= 0 ? englishMonthIndex + 1 : null };
+  }
+
+  function readDateDisplayMatches(target, date, collectType = 'ymd') {
+    if (!(target instanceof Element) || !(date instanceof Date)) return false;
+    const display = readSimpleValue(target) || readSelectLikeDisplayText(target);
+    if (!display || isPlaceholderDisplayText(display)) return false;
+    const values = (display.match(/\d+/g) || []).map(Number);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    if (collectType === 'ym') return values.length >= 2 && values[0] === year && values[1] === month;
+    if (collectType === 'md') {
+      if (values.length >= 3) return values[1] === month && values[2] === day;
+      return values.length >= 2 && values[0] === month && values[1] === day;
+    }
+    return values.length >= 3 && values[0] === year && values[1] === month && values[2] === day;
+  }
+
+  async function waitForDateDisplay(target, date, collectType = 'ymd', timeout = 900) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeout) {
+      if (readDateDisplayMatches(target, date, collectType)) return true;
+      await sleep(60);
+    }
+    return readDateDisplayMatches(target, date, collectType);
+  }
+
+  async function fillLingxiDateOverlay(overlay, target, date, collectType = 'ymd') {
+    const dayGridButtons = () => Array.from(overlay.querySelectorAll('.fb-grid-cols-7 button'))
+      .filter((node) => node instanceof HTMLElement && visible(node));
+    const detectedType = dayGridButtons().length ? (collectType === 'md' ? 'md' : 'ymd') : 'ym';
+    const targetYear = date.getFullYear();
+    const targetMonth = date.getMonth() + 1;
+
+    for (let attempt = 0; attempt < 18; attempt += 1) {
+      const period = parseLingxiDateOverlayPeriod(overlay);
+      if (!period) return { ok: false, reason: '无法读取日期面板当前年月' };
+      const navButtons = Array.from(overlay.querySelectorAll('button'))
+        .filter((node) => node instanceof HTMLElement && visible(node) && !node.disabled && node.querySelector('svg'));
+      if (detectedType === 'ym') {
+        const yearDelta = targetYear - period.year;
+        if (yearDelta === 0) break;
+        const button = yearDelta < 0 ? navButtons[0] : navButtons[navButtons.length - 1];
+        if (!(button instanceof HTMLElement)) return { ok: false, reason: '日期面板缺少年份导航按钮' };
+        button.click();
+      } else {
+        if (!Number.isFinite(period.month)) return { ok: false, reason: '无法读取日期面板当前月份' };
+        const monthDelta = (targetYear - period.year) * 12 + targetMonth - period.month;
+        if (monthDelta === 0) break;
+        const previousButton = navButtons.length >= 4 ? navButtons[1] : navButtons[0];
+        const nextButton = navButtons.length >= 4 ? navButtons[navButtons.length - 2] : navButtons[navButtons.length - 1];
+        const button = monthDelta < 0 ? previousButton : nextButton;
+        if (!(button instanceof HTMLElement)) return { ok: false, reason: '日期面板缺少月份导航按钮' };
+        button.click();
+      }
+      await sleep(90);
+    }
+
+    const period = parseLingxiDateOverlayPeriod(overlay);
+    if (!period || period.year !== targetYear || (detectedType !== 'ym' && period.month !== targetMonth)) {
+      return { ok: false, reason: '日期面板未导航到目标年月' };
+    }
+
+    let picked = null;
+    if (detectedType === 'ym') {
+      const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+      picked = Array.from(overlay.querySelectorAll('.fb-grid-cols-3 button'))
+        .filter((node) => node instanceof HTMLElement && visible(node) && !node.disabled)
+        .find((node) => {
+          const text = normText(node.textContent || '').toLowerCase();
+          const number = Number((text.match(/\d+/) || [])[0]);
+          return number === targetMonth || text.includes(monthNames[targetMonth - 1]);
+        }) || null;
+    } else {
+      picked = dayGridButtons()
+        .filter((node) => !node.disabled && String(node.getAttribute('aria-disabled') || '').toLowerCase() !== 'true')
+        .filter((node) => !String(node.className || '').includes('fb-text-slate-300'))
+        .find((node) => Number(normText(node.textContent || '').replace(/\D/g, '')) === date.getDate()) || null;
+    }
+    if (!(picked instanceof HTMLElement)) return { ok: false, reason: '目标日期在面板中不可选择' };
+
+    picked.click();
+    await sleep(140);
+    const stillOpen = getVisibleLingxiDateOverlay();
+    if (stillOpen) {
+      const confirm = Array.from(stillOpen.querySelectorAll('button'))
+        .filter((node) => node instanceof HTMLElement && visible(node) && !node.disabled)
+        .find((node) => /^(确定|確定|确认|確認|完成|ok)$/i.test(normText(node.textContent || '')));
+      if (confirm) {
+        confirm.click();
+        await sleep(140);
+      }
+    }
+    const ok = await waitForDateDisplay(target, date, detectedType);
+    return { ok, reason: ok ? `日期面板已真实选择${detectedType}` : '日期面板点击后组件值未更新', collectType: detectedType };
+  }
+
   async function fillDateField(field, value, root, strictScope) {
     const target = findElement(field, root, strictScope);
     if (!target) return buildFillResult(false, '日期控件未定位');
     if (value == null || String(value).trim() === '') return buildFillResult(false, '日期值为空');
 
-    const toStartOfDay = (date) => {
-      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
-      const next = new Date(date);
-      next.setHours(0, 0, 0, 0);
-      return next;
-    };
-    const parseDateText = (text = '') => {
-      const raw = String(text || '').trim();
-      const match = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
-      if (!match) return null;
-      const y = Number(match[1]);
-      const m = Number(match[2]);
-      const d = Number(match[3]);
-      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-      if (m < 1 || m > 12 || d < 1 || d > 31) return null;
-      const dt = new Date(y, m - 1, d);
-      if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
-      return toStartOfDay(dt);
-    };
-    const formatDateText = (date) => {
-      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    };
-    const shiftDays = (date, days = 0) => {
-      const base = toStartOfDay(date);
-      if (!base) return null;
-      base.setDate(base.getDate() + Number(days || 0));
-      return base;
-    };
     const constraints = field?.constraints || {};
     const hintText = [
       field?.label || '',
@@ -3725,73 +3909,40 @@
       }
       return buildFillResult(false, panelResult?.reason || '时间控件选择失败', { target });
     }
-    const minDate = parseDateText(String(constraints?.min || target.getAttribute?.('min') || ''));
-    const maxDate = parseDateText(String(constraints?.max || target.getAttribute?.('max') || ''));
-    const oneYearRequired = !!constraints?.oneYearRequired ||
-      Number(constraints?.olderThanDays || 0) >= 365 ||
-      /(一週年|一周年|滿足一週年|满一周年|滿一週年|超过一年|超過一年|一年或以上|滿一年|满一年|營運超過一年|运营超过一年|成立.{0,6}(一年|周年))/i.test(hintText);
-    const cutoffOneYear = shiftDays(new Date(), -Math.max(366, Number(constraints?.olderThanDays || 366)));
-    let upperBound = maxDate;
-    if (oneYearRequired && cutoffOneYear) {
-      if (!upperBound || cutoffOneYear.getTime() < upperBound.getTime()) {
-        upperBound = cutoffOneYear;
-      }
+    const collectType = normalizeDateCollectType(field);
+    const halfYearWindow = getHalfYearDateWindow();
+    const minDate = parseYmdDate(String(constraints?.min || target.getAttribute?.('min') || ''));
+    const maxDate = parseYmdDate(String(constraints?.max || target.getAttribute?.('max') || ''));
+    const lowerBound = minDate && minDate.getTime() > halfYearWindow.min.getTime() ? minDate : halfYearWindow.min;
+    const upperBound = maxDate && maxDate.getTime() < halfYearWindow.max.getTime() ? maxDate : halfYearWindow.max;
+    if (lowerBound.getTime() > upperBound.getTime()) {
+      return buildFillResult(false, '页面日期范围与当前日期前后半年限制无交集', { target });
     }
-    let nextDate = parseDateText(String(value || ''));
-    if (!nextDate) {
-      nextDate = upperBound ? shiftDays(upperBound, -randomInt(3, 180)) : shiftDays(new Date(), -randomInt(30, 1200));
-    }
-    if (minDate && nextDate && nextDate.getTime() < minDate.getTime()) nextDate = new Date(minDate);
-    if (upperBound && nextDate && nextDate.getTime() > upperBound.getTime()) {
-      nextDate = shiftDays(upperBound, -randomInt(0, 20));
-    }
-    if (minDate && nextDate && nextDate.getTime() < minDate.getTime()) nextDate = new Date(minDate);
-    const normalizedValue = formatDateText(nextDate) || String(value || '');
-    const writeDateFallback = () => {
-      const container = target.closest?.('.fb-form-field, .fb-form-item, .form-item, .form-field, .arco-form-item, .ant-form-item, .el-form-item, [role="group"]') || target.parentElement;
-      const input = container?.querySelector?.('input:not([type="file"]), textarea');
-      if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) {
-        setNativeValue(input, normalizedValue);
-        input.dispatchEvent(new Event('blur', { bubbles: true }));
-        if (verifyTextLikeValue(input, normalizedValue)) {
-          return buildFillResult(true, '日期输入兜底写入', { target: input });
-        }
-      }
-      if (target instanceof HTMLElement) {
-        const textNode = Array.from(target.querySelectorAll('span, div, p')).find((node) => {
-          if (!(node instanceof HTMLElement)) return false;
-          if (!visible(node)) return false;
-          const text = normText(node.textContent || '');
-          return !text || /請選擇|请选择|選擇|选择|date|出生日期/i.test(text);
-        }) || target;
-        textNode.textContent = normalizedValue;
-        target.setAttribute('data-formpilot-v2-filled-date', normalizedValue);
-        target.dispatchEvent(new Event('input', { bubbles: true }));
-        target.dispatchEvent(new Event('change', { bubbles: true }));
-        target.dispatchEvent(new Event('blur', { bubbles: true }));
-        if (verifyTextLikeValue(target, normalizedValue)) {
-          return buildFillResult(true, '日期按钮兜底写入展示值', { target });
-        }
-      }
-      return null;
-    };
+    let nextDate = parseDateForCollectType(String(value || ''), collectType, halfYearWindow.today) || new Date(halfYearWindow.today);
+    nextDate = clampDateToBounds(nextDate, lowerBound, upperBound);
+    const normalizedValue = formatYmdDate(nextDate);
 
     const tag = target.tagName.toLowerCase();
-    const type = String(target.getAttribute('type') || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea') {
-      setNativeValue(target, normalizedValue);
-      const ok = verifyTextLikeValue(target, normalizedValue);
+      const inputValue = collectType === 'ym' ? normalizedValue.slice(0, 7) : (collectType === 'md' ? normalizedValue.slice(5) : normalizedValue);
+      setNativeValue(target, inputValue);
+      target.dispatchEvent(new Event('blur', { bubbles: true }));
+      const ok = readDateDisplayMatches(target, nextDate, collectType);
       return buildFillResult(ok, ok ? '日期输入框已写入' : '日期输入框写入未生效', { target });
     }
 
-    if (type === 'date') {
-      setNativeValue(target, normalizedValue);
-      const ok = verifyTextLikeValue(target, normalizedValue);
-      return buildFillResult(ok, ok ? '日期控件已写入' : '日期控件写入未生效', { target });
+    if (readDateDisplayMatches(target, nextDate, collectType)) {
+      return buildFillResult(true, '日期控件已是目标值', { target });
     }
 
     target.click();
     await sleep(160);
+    const lingxiOverlay = getVisibleLingxiDateOverlay();
+    if (lingxiOverlay) {
+      const result = await fillLingxiDateOverlay(lingxiOverlay, target, nextDate, collectType);
+      return buildFillResult(result.ok, result.reason, { target, afterValue: readSimpleValue(target) });
+    }
+
     const wantedDay = nextDate instanceof Date ? String(nextDate.getDate()) : '';
     const wantedMonth = nextDate instanceof Date ? String(nextDate.getMonth() + 1) : '';
     const wantedYear = nextDate instanceof Date ? String(nextDate.getFullYear()) : '';
@@ -3838,12 +3989,9 @@
       .sort((a, b) => scoreDateCandidate(b) - scoreDateCandidate(a))[0] || null;
     if (dateBtn instanceof HTMLElement) {
       dateBtn.click();
-      await sleep(120);
-      return buildFillResult(true, '日期面板已点击日期', { target });
+      const ok = await waitForDateDisplay(target, nextDate, collectType);
+      return buildFillResult(ok, ok ? '日期面板已真实选择日期' : '日期面板点击后组件值未更新', { target, afterValue: readSimpleValue(target) });
     }
-
-    const fallbackResult = writeDateFallback();
-    if (fallbackResult) return fallbackResult;
     return buildFillResult(false, '未找到日期面板可点击项', { target });
   }
 
@@ -4280,18 +4428,14 @@
     if (dateLike) {
       const dt = parseYmdDate(text);
       if (!dt) return { ok: false, reason: '日期格式非法' };
+      const halfYearWindow = getHalfYearDateWindow();
+      if (dt.getTime() < halfYearWindow.min.getTime() || dt.getTime() > halfYearWindow.max.getTime()) {
+        return { ok: false, reason: `日期需在 ${formatYmdDate(halfYearWindow.min)} 至 ${formatYmdDate(halfYearWindow.max)} 之间` };
+      }
       const minDate = parseYmdDate(String(constraints?.min || ''));
       const maxDate = parseYmdDate(String(constraints?.max || ''));
       if (minDate && dt.getTime() < minDate.getTime()) return { ok: false, reason: `日期早于最小值 ${formatYmdDate(minDate)}` };
       if (maxDate && dt.getTime() > maxDate.getTime()) return { ok: false, reason: `日期晚于最大值 ${formatYmdDate(maxDate)}` };
-      const olderThanDays = Math.max(0, Number(constraints?.olderThanDays || 0));
-      const oneYearRequired = !!constraints?.oneYearRequired || olderThanDays >= 365;
-      if (oneYearRequired) {
-        const cutoff = new Date();
-        cutoff.setHours(0, 0, 0, 0);
-        cutoff.setDate(cutoff.getDate() - Math.max(366, olderThanDays || 366));
-        if (dt.getTime() > cutoff.getTime()) return { ok: false, reason: '日期未满足满一年约束' };
-      }
     }
 
     return { ok: true };
@@ -4339,16 +4483,21 @@
       const container = findWidgetContainer(field, root, strictScope);
       const nodes = collectWidgetOptionNodes(field, root, strictScope, 'button[role="combobox"], [role="combobox"]')
         .filter((node) => !node.closest('.fb-runtime-control-clear'));
+      const roles = Array.isArray(field?.meta?.segmentRoles)
+        ? field.meta.segmentRoles.filter((role) => ['year', 'month', 'day'].includes(role))
+        : [];
+      const expected = roles.length || (normalizeDateCollectType(field) === 'ymd' ? 3 : 2);
       const filled = nodes.filter((node) => {
         const text = readSelectLikeDisplayText(node) || readSimpleValue(node);
         return text && !isPlaceholderDisplayText(text) && !/^(年|月|日|year|month|day)$/i.test(text);
       }).length;
-      const ok = filled >= Math.min(3, nodes.length || 3) || !!container?.querySelector?.('[data-formpilot-v2-widget-filled]');
+      const validationError = readValidationErrorText(container);
+      const ok = !validationError && nodes.length >= expected && filled >= expected;
       return {
         id: field.id,
         kind: field.kind,
         ok,
-        reason: ok ? '生日已填充' : `生日未完整填充(${filled}/${nodes.length || 3})`
+        reason: validationError || (ok ? '生日已真实选择' : `生日未完整填充(${filled}/${expected})`)
       };
     }
 

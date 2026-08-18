@@ -1,5 +1,5 @@
 (function initFormPilotV2Scan() {
-  const FORM_PILOT_V2_SCAN_BUILD = '2026-03-28-01';
+  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-18-date-01';
   if (window.FormPilotV2Scan?.__build === FORM_PILOT_V2_SCAN_BUILD) return;
 
   const EID_ATTR = 'data-formpilot-v2-eid';
@@ -1530,21 +1530,74 @@
     return !!row.querySelector('.fb-birthday-calendar-option') || /birthday|birth\s*date|\bdob\b|生日|出生|出生日期/.test(hint);
   }
 
+  function inferBirthdaySegmentRole(node) {
+    if (!(node instanceof Element)) return '';
+    const hint = normText([
+      node.getAttribute('placeholder') || '',
+      node.getAttribute('aria-placeholder') || '',
+      node.getAttribute('data-placeholder') || '',
+      node.getAttribute('aria-label') || '',
+      node.getAttribute('title') || '',
+      node.textContent || ''
+    ].join(' '));
+    if (/(^|\s)(year|yyyy)(\s|$)|年/i.test(hint)) return 'year';
+    if (/(^|\s)(month|mm)(\s|$)|月/i.test(hint)) return 'month';
+    if (/(^|\s)(day|dd)(\s|$)|日/i.test(hint)) return 'day';
+    return '';
+  }
+
+  function resolveBirthdaySegmentRoles(combos = []) {
+    const nodes = combos.slice(0, 3);
+    const roles = nodes.map(inferBirthdaySegmentRole);
+    const fillRole = (index, role) => {
+      if (!roles[index] && !roles.includes(role)) roles[index] = role;
+    };
+
+    if (nodes.length >= 3) {
+      ['year', 'month', 'day'].forEach((role, index) => fillRole(index, role));
+      for (let i = 0; i < roles.length; i += 1) {
+        if (roles[i]) continue;
+        roles[i] = ['year', 'month', 'day'].find((role) => !roles.includes(role)) || `slot${i + 1}`;
+      }
+      return roles;
+    }
+
+    if (nodes.length === 2) {
+      if (roles.includes('year')) {
+        fillRole(roles[0] === 'year' ? 1 : 0, 'month');
+      } else if (roles.includes('day')) {
+        fillRole(roles[0] === 'day' ? 1 : 0, 'month');
+      } else if (roles.includes('month')) {
+        fillRole(roles[0] === 'month' ? 1 : 0, roles[0] === 'month' ? 'day' : 'year');
+      } else {
+        const firstNumber = Number(normText(nodes[0]?.textContent || '').replace(/\D/g, ''));
+        const looksLikeYearMonth = firstNumber >= 1000 || firstNumber > 31;
+        roles[0] = looksLikeYearMonth ? 'year' : 'month';
+        roles[1] = looksLikeYearMonth ? 'month' : 'day';
+      }
+    }
+    return roles;
+  }
+
   function buildBirthdayMeta(row) {
     const combos = getVisibleWidgetNodes(row, 'button[role="combobox"], [role="combobox"]').filter((node) => {
       if (node.closest('.fb-runtime-control-clear')) return false;
       return true;
     }).slice(0, 3);
-    const roles = ['year', 'month', 'day'];
+    const roles = resolveBirthdaySegmentRoles(combos);
+    const dateCollectType = roles.includes('year')
+      ? (roles.includes('day') ? 'ymd' : 'ym')
+      : 'md';
     const calendarTypeNodes = getVisibleWidgetNodes(row, '.fb-birthday-calendar-option');
     return {
       widget: 'birthday',
       birthdayComposite: true,
+      dateCollectType,
       selectLike: false,
       componentGroup: true,
       segmentDomIds: combos.map((node) => ensureDomId(resolveFieldLocatorElement(node, true))),
       segmentSelectors: combos.map((node) => buildSelector(resolveFieldLocatorElement(node, true))),
-      segmentRoles: combos.map((_, index) => roles[index] || `slot${index + 1}`),
+      segmentRoles: roles,
       calendarTypeDomIds: calendarTypeNodes.map((node) => ensureDomId(node)),
       calendarTypeSelectors: calendarTypeNodes.map((node) => buildSelector(node))
     };

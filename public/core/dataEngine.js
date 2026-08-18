@@ -479,21 +479,12 @@ function buildVerificationCode(hint = '') {
 }
 
 function buildDate() {
-  const past = new Date();
-  past.setHours(0, 0, 0, 0);
-  past.setDate(past.getDate() - randomInt(30, 3650));
-  return formatYmdDate(past);
-}
-
-function buildDateMoreThanOneYear() {
-  const now = new Date();
-  const past = new Date(now);
-  past.setFullYear(now.getFullYear() - randomInt(2, 8));
-  past.setDate(Math.max(1, past.getDate() - randomInt(0, 20)));
-  const y = past.getFullYear();
-  const m = String(past.getMonth() + 1).padStart(2, '0');
-  const d = String(past.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  const { min, today } = getHalfYearDateWindow();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const daySpan = Math.max(0, Math.floor((today.getTime() - min.getTime()) / dayMs));
+  const value = new Date(min);
+  value.setDate(value.getDate() + randomInt(0, daySpan));
+  return formatYmdDate(value);
 }
 
 function parseYmdDate(value = '') {
@@ -523,20 +514,35 @@ function formatYmdDate(date) {
   return `${y}-${m}-${d}`;
 }
 
-function requiresAtLeastOneYearDate(hintText = '') {
-  const hint = String(hintText || '');
-  return /(一週年|一周年|滿足一週年|满一周年|滿一週年|超过一年|超過一年|一年或以上|滿一年|满一年|營運超過一年|运营超过一年|成立.{0,6}(一年|周年))/i.test(hint);
+function toStartOfDay(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function ensureDateOlderThan(value = '', minDays = 366) {
-  const cutoff = new Date();
-  cutoff.setHours(0, 0, 0, 0);
-  cutoff.setDate(cutoff.getDate() - Math.max(1, Number(minDays || 366)));
-  const parsed = parseYmdDate(value);
-  if (parsed && parsed.getTime() <= cutoff.getTime()) return formatYmdDate(parsed);
-  const fallback = new Date(cutoff);
-  fallback.setDate(fallback.getDate() - randomInt(30, 1800));
-  return formatYmdDate(fallback);
+function shiftCalendarMonths(date, amount = 0) {
+  const source = toStartOfDay(date);
+  if (!source) return null;
+  const shifted = new Date(source.getFullYear(), source.getMonth() + Number(amount || 0), 1);
+  const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate();
+  shifted.setDate(Math.min(source.getDate(), lastDay));
+  return shifted;
+}
+
+function getHalfYearDateWindow(referenceDate = new Date()) {
+  const today = toStartOfDay(referenceDate) || toStartOfDay(new Date());
+  return {
+    min: shiftCalendarMonths(today, -6),
+    max: shiftCalendarMonths(today, 6),
+    today
+  };
+}
+
+function normalizeDateToHalfYearWindow(value = '', fallbackDate = new Date()) {
+  const { min, max } = getHalfYearDateWindow();
+  let date = parseYmdDate(value) || toStartOfDay(fallbackDate) || new Date(min);
+  if (date.getTime() < min.getTime()) date = new Date(min);
+  if (date.getTime() > max.getTime()) date = new Date(max);
+  return formatYmdDate(date);
 }
 
 function buildAddress() {
@@ -690,10 +696,7 @@ function buildDateRecent() {
   const now = new Date();
   const past = new Date(now);
   past.setDate(now.getDate() - randomInt(1, 90));
-  const y = past.getFullYear();
-  const m = String(past.getMonth() + 1).padStart(2, '0');
-  const d = String(past.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return normalizeDateToHalfYearWindow(formatYmdDate(past));
 }
 
 function buildDepartmentName() {
@@ -1070,10 +1073,10 @@ function buildMockRuleValue(rule, field, lang = 'zh') {
       return buildCompanyName('gov');
     case 'date':
       if (isTimeOnlyField(field, hint)) return buildTimeValue(field);
-      return requiresAtLeastOneYearDate(hint) ? buildDateMoreThanOneYear() : buildDate();
+      return buildDate();
     case 'dateOld':
     case 'datePast':
-      return buildDateMoreThanOneYear();
+      return buildDate();
     case 'dateRecent':
       if (isTimeOnlyField(field, hint)) return buildTimeValue(field);
       return buildDateRecent();
@@ -1261,8 +1264,8 @@ export function generateValueForField(field, settings = {}) {
       if (kind === FIELD_KINDS.DATE && timeOnly) {
         return normalizeTimeValue(mockRuleValue, buildTimeValue(field));
       }
-      if (kind === FIELD_KINDS.DATE && requiresAtLeastOneYearDate(hint)) {
-        return ensureDateOlderThan(String(mockRuleValue), 366);
+      if (kind === FIELD_KINDS.DATE) {
+        return normalizeDateToHalfYearWindow(String(mockRuleValue));
       }
       return mockRuleValue;
     }
@@ -1289,7 +1292,7 @@ export function generateValueForField(field, settings = {}) {
     if (kind === FIELD_KINDS.DATE) {
       if (timeOnly) return normalizeTimeValue(pickConfiguredValue(settings, 'time'), buildTimeValue(field));
       const value = pickConfiguredValue(settings, 'date');
-      return value && requiresAtLeastOneYearDate(hint) ? ensureDateOlderThan(value, 366) : value;
+      return value ? normalizeDateToHalfYearWindow(value) : value;
     }
     if (kind === FIELD_KINDS.ADDRESS_COMPONENT) return null;
     if (kind === FIELD_KINDS.ADDRESS_DETAIL) return pickConfiguredValue(settings, 'address');
@@ -1330,7 +1333,6 @@ export function generateValueForField(field, settings = {}) {
   if (kind === FIELD_KINDS.SELECT) return chooseSelectValue(field);
   if (kind === FIELD_KINDS.DATE) {
     if (timeOnly) return buildTimeValue(field);
-    if (/成立|setup|成立日期|成立時間/.test(hint) || requiresAtLeastOneYearDate(hint)) return buildDateMoreThanOneYear();
     return buildDate();
   }
   if (kind === FIELD_KINDS.JOB_TITLE) return buildJobTitle(lang);
@@ -1373,8 +1375,8 @@ export function generateValueForField(field, settings = {}) {
   if (/日期|時間|时间|生日|出生日期|birth\s*date|date\s*of\s*birth|\bdob\b|date|time/i.test(hint)) {
     if (timeOnly) return buildTimeValue(field);
     const value = pickConfiguredValue(settings, 'date');
-    if (value) return (/成立/.test(hint) || requiresAtLeastOneYearDate(hint)) ? ensureDateOlderThan(value, 366) : value;
-    return (/成立/.test(hint) || requiresAtLeastOneYearDate(hint)) ? buildDateMoreThanOneYear() : buildDate();
+    if (value) return normalizeDateToHalfYearWindow(value);
+    return buildDate();
   }
   if (/宗旨|mission|purpose|願景|愿景|目標|目标/i.test(hint)) return buildOrgMission(lang);
   if (/主要服務|服务內容|服务内容|service content|service scope/i.test(hint)) return buildServiceContent(lang);
