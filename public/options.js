@@ -1,4 +1,9 @@
-import { DEFAULT_SETTINGS, STORAGE_KEYS } from './core/types.js';
+import {
+  DEFAULT_SETTINGS,
+  STORAGE_KEYS,
+  migrateDefaultEmailPool,
+  migrateTestDataLibraryDefaults
+} from './core/types.js';
 import { md5 } from './core/md5.js';
 import {
   buildApiExecutionRequest,
@@ -1026,15 +1031,16 @@ function buildFilePoolsFromStore(files = []) {
 }
 
 function normalizeTestDataLibrary(raw = {}, fallbackSettings = {}) {
+  const migratedRaw = migrateTestDataLibraryDefaults(raw);
   const defaults = cloneJson(DEFAULT_SETTINGS.testDataLibrary || {});
   const defaultPools = defaults.pools || {};
-  const rawPools = raw?.pools || {};
+  const rawPools = migratedRaw?.pools || {};
   const legacyEmail = Array.isArray(fallbackSettings.emailPoolList) && fallbackSettings.emailPoolList.length
-    ? fallbackSettings.emailPoolList
+    ? migrateDefaultEmailPool(fallbackSettings.emailPoolList)
     : defaultPools.email;
   return {
-    version: Number(raw.version || defaults.version || 1),
-    enabled: raw.enabled !== false,
+    version: Number(migratedRaw.version || defaults.version || 1),
+    enabled: migratedRaw.enabled !== false,
     pools: {
       chineseName: normalizeList(rawPools.chineseName, defaultPools.chineseName),
       englishName: normalizeList(rawPools.englishName, defaultPools.englishName),

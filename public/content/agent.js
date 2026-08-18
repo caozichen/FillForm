@@ -4479,6 +4479,23 @@
     ].join(' '));
   }
 
+  function hasActionClassHint(className = '') {
+    return String(className)
+      .split(/\s+/)
+      .filter(Boolean)
+      .some((token) => /^(submit-btn|btn-submit|btn-primary|primary|action-btn|footer-btn|pager-btn|pagination-btn)$/i.test(token));
+  }
+
+  function hasExcludedActionClass(className = '') {
+    return String(className)
+      .split(/\s+/)
+      .filter(Boolean)
+      .some((token) => (
+        /(?:^|[-_])(?:runtime-control-clear|runtime-input-clear|runtime-upload|upload-trigger|upload-image|cascader-trigger|mobile-area-code|calendar|signature|radio-group|checkbox-root|radio-group-item|select-trigger|combobox)(?:$|[-_])/i.test(token)
+        || /(?:^|[-_])(?:date|time)[-_]?(?:picker|input|trigger|selector|panel)(?:$|[-_])/i.test(token)
+      ));
+  }
+
   function labelForActionControl(el) {
     if (!(el instanceof Element)) return '';
     const labels = el.labels ? Array.from(el.labels).map((node) => normText(node.textContent)).filter(Boolean) : [];
@@ -4569,7 +4586,7 @@
     const type = String(el.getAttribute('type') || '').toLowerCase();
     if (tag === 'input' && !['button', 'submit'].includes(type)) return true;
     const className = String(el.getAttribute('class') || '');
-    if (/(runtime-control-clear|runtime-input-clear|runtime-upload|upload-trigger|upload-image|cascader-trigger|mobile-area-code|date|time|calendar|signature|radio-group|checkbox-root|radio-group-item|select-trigger|combobox)/i.test(className)) {
+    if (hasExcludedActionClass(className)) {
       return true;
     }
     if (el.closest('.fb-runtime-control-clear, .fb-runtime-input-clear, .fb-runtime-upload-trigger, .fb-runtime-upload-image-trigger, .fb-signature-empty-trigger')) return true;
@@ -4581,6 +4598,24 @@
     if (ACTION_TEXT_PATTERNS.next.test(signal)) return 'next';
     if (ACTION_TEXT_PATTERNS.submit.test(signal)) return 'submit';
     return '';
+  }
+
+  function isSafeActionAnchor(el, requestedAction = '') {
+    if (!(el instanceof Element) || el.tagName.toLowerCase() !== 'a') return true;
+    if (el.closest('.fb-runtime-form-footer, .fb-runtime-form-footer__powered-by, footer, [class*="powered-by"], [class*="powered_by"], [class*="copyright"]')) {
+      return false;
+    }
+    const explicitKind = inferActionTextKind(getActionTextSignal(el));
+    if (!explicitKind || (requestedAction && explicitKind !== requestedAction)) return false;
+    if (String(el.getAttribute('target') || '').toLowerCase() === '_blank') return false;
+    const href = el.getAttribute('href');
+    if (!href) return false;
+    try {
+      const url = new URL(href, location.href);
+      return ['http:', 'https:'].includes(url.protocol) && url.origin === location.origin;
+    } catch {
+      return false;
+    }
   }
 
   function scoreActionCandidate(el, context = {}) {
@@ -4595,7 +4630,7 @@
     let score = 0;
     if (tag === 'button' || tag === 'input') score += 2;
     if (type === 'button' || type === 'submit') score += 2;
-    if (/\b(submit-btn|btn-submit|btn-primary|primary|action-btn|footer-btn|pager-btn|pagination-btn)\b/i.test(className)) score += 8;
+    if (hasActionClassHint(className)) score += 8;
     if (actionContainer) score += 5;
     if (rect.width >= 80 && rect.height >= 30) score += 2;
     if (rect.width >= 120) score += 2;
@@ -4603,8 +4638,8 @@
     if (context.maxControlBottom && rect.top >= context.maxControlBottom - 220) score += 3;
     if (window.innerHeight && rect.top > window.innerHeight * 0.45) score += 1;
     if (textKind) score += 6;
-    if (inField && !/\b(submit-btn|btn-submit|action-btn)\b/i.test(className)) score -= 8;
-    if (/(clear|upload|signature|cascader|select|calendar|time|date)/i.test(className)) score -= 8;
+    if (inField && !hasActionClassHint(className)) score -= 8;
+    if (hasExcludedActionClass(className)) score -= 8;
     if (el.getAttribute('aria-disabled') === 'true' || el.disabled) score -= 20;
     return { score, textKind };
   }
@@ -4641,7 +4676,7 @@
         let structuralKind = '';
         if (item.textKind) {
           structuralKind = item.textKind;
-        } else if (row === primaryRow && hasPageProgress) {
+        } else if (row === primaryRow && hasPageProgress && item.tag !== 'a') {
           const isFirst = index === 0;
           const isLast = index === rowItems.length - 1;
           if (current <= 1 && rowItems.length === 1 && current < total) {
@@ -4655,7 +4690,10 @@
           }
         }
         item.kind = structuralKind || item.kind || '';
-        item.safeNext = item.kind === 'next' && !item.disabled && item.score >= 8;
+        item.safeNext = item.kind === 'next'
+          && !item.disabled
+          && item.score >= 8
+          && (item.tag !== 'a' || item.textKind === 'next');
       });
     }
     return rows;
@@ -4669,7 +4707,8 @@
     const pageInfo = detectPageInfoFromText();
     const rawNodes = Array.from(document.querySelectorAll(ACTION_CONTROL_SELECTOR))
       .filter(isElementVisibleForAction)
-      .filter((el) => !isActionExcludedControl(el));
+      .filter((el) => !isActionExcludedControl(el))
+      .filter((el) => isSafeActionAnchor(el));
     const candidates = rawNodes
       .map((el, index) => {
         const rect = el.getBoundingClientRect();
@@ -4708,7 +4747,7 @@
       .map(({ node, ...item }) => item)
       .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
     const nextCandidates = publicActions
-      .filter((item) => item.kind === 'next' && !item.disabled && item.score >= 8)
+      .filter((item) => item.safeNext)
       .sort((a, b) => b.score - a.score || b.rect.y - a.rect.y);
     const prevCandidates = publicActions.filter((item) => item.kind === 'prev' && !item.disabled);
     const submitCandidates = publicActions.filter((item) => item.kind === 'submit' && !item.disabled);
@@ -4775,7 +4814,7 @@
     if (!state.ok) return state;
     const liveCandidates = collectPageActionState().actions || [];
     const candidates = action === 'next'
-      ? liveCandidates.filter((item) => item.kind === 'next' && !item.disabled && item.score >= 8)
+      ? liveCandidates.filter((item) => item.safeNext)
       : liveCandidates.filter((item) => item.kind === action && !item.disabled);
     const chosen = candidates.sort((a, b) => b.score - a.score || b.rect.y - a.rect.y)[0];
     if (!chosen) {
@@ -4788,6 +4827,7 @@
     const node = Array.from(document.querySelectorAll(ACTION_CONTROL_SELECTOR))
       .filter(isElementVisibleForAction)
       .filter((el) => !isActionExcludedControl(el))
+      .filter((el) => isSafeActionAnchor(el))
       .find((el, index) => {
         const rect = el.getBoundingClientRect();
         const text = getActionNodeText(el);
@@ -4799,6 +4839,14 @@
       return {
         ok: false,
         error: 'Action candidate disappeared',
+        state,
+        chosen
+      };
+    }
+    if (!isSafeActionAnchor(node, action)) {
+      return {
+        ok: false,
+        error: 'Unsafe action anchor',
         state,
         chosen
       };

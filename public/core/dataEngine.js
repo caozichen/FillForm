@@ -1,4 +1,9 @@
-import { DEFAULT_TEST_DATA_LIBRARY, FIELD_KINDS } from './types.js';
+import {
+  DEFAULT_TEST_DATA_LIBRARY,
+  FIELD_KINDS,
+  migrateDefaultEmailPool,
+  migrateTestDataLibraryDefaults
+} from './types.js';
 
 const CN_LAST_NAMES = ['王', '李', '张', '刘', '陈', '杨', '赵', '黄', '周', '吴', '徐', '孙', '胡', '郭', '何'];
 const CN_FIRST_NAMES = ['晨', '璟', '娜', '乐', '伟', '佳', '磊', '婷', '昊', '瑞', '琳', '博', '芳', '媛', '帆'];
@@ -128,13 +133,14 @@ function createEmptyFilePools() {
 }
 
 export function getTestDataLibrary(settings = {}) {
-  const raw = settings.testDataLibrary && typeof settings.testDataLibrary === 'object'
+  const storedLibrary = settings.testDataLibrary && typeof settings.testDataLibrary === 'object'
     ? settings.testDataLibrary
     : {};
+  const raw = migrateTestDataLibraryDefaults(storedLibrary);
   const rawPools = raw.pools && typeof raw.pools === 'object' ? raw.pools : {};
   const defaultPools = DEFAULT_TEST_DATA_LIBRARY.pools || {};
   const legacyEmail = Array.isArray(settings.emailPoolList) && settings.emailPoolList.length
-    ? settings.emailPoolList
+    ? migrateDefaultEmailPool(settings.emailPoolList)
     : defaultPools.email;
 
   return {

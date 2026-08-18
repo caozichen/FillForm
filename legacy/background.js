@@ -2,7 +2,9 @@ import {
   DEFAULT_SETTINGS,
   FIELD_MAPPING_MESSAGES,
   FIELD_MAPPING_SCHEMA_VERSION,
-  STORAGE_KEYS
+  STORAGE_KEYS,
+  migrateDefaultEmailPool,
+  migrateTestDataLibraryDefaults
 } from './core/types.js';
 import { detectEngineNormalize, prepareFieldsForFill } from './core/detectEngine.js';
 import { generateValues } from '../public/core/dataEngine.js';
@@ -1459,9 +1461,15 @@ function normalizeZhipuSettings(raw = {}) {
 }
 
 function mergeSettings(raw = {}) {
+  const testDataLibrary = migrateTestDataLibraryDefaults(raw.testDataLibrary || {});
+  const emailPoolList = Array.isArray(raw.emailPoolList)
+    ? migrateDefaultEmailPool(raw.emailPoolList)
+    : DEFAULT_SETTINGS.emailPoolList;
   return {
     ...DEFAULT_SETTINGS,
     ...raw,
+    emailPoolList,
+    testDataLibrary,
     visiblePanelTabs: normalizeVisiblePanelTabs(raw.visiblePanelTabs),
     mockRuleCenter: {
       ...(DEFAULT_SETTINGS.mockRuleCenter || {}),

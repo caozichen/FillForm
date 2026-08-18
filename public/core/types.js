@@ -24,7 +24,7 @@ export const FIELD_KINDS = {
 };
 
 export const DEFAULT_TEST_DATA_LIBRARY = {
-  version: 1,
+  version: 2,
   enabled: true,
   pools: {
     chineseName: ['王晓彤', '李晨宇', '张雅楠'],
@@ -37,9 +37,9 @@ export const DEFAULT_TEST_DATA_LIBRARY = {
     companyName: ['灵犀科技有限公司', '启航信息技术有限公司', '星河数字科技有限公司'],
     socialCreditCode: ['91440300MA5K8X7P2Q', '91310115MA1H8Q6L5D', '9111000071093019X8'],
     email: [
-      'shanshan_test@163.com',
-      'shishanshan@lingxi360.cn',
-      'hill971211@gmail.com'
+      'tester.one@example.com',
+      'tester.two@example.net',
+      'tester.three@example.org'
     ],
     idDocument: {
       cnId: ['110101199001011234', '440305199508088888'],
@@ -49,11 +49,17 @@ export const DEFAULT_TEST_DATA_LIBRARY = {
     landline: ['021-62888888', '0755-26668888', '852-31234567', '853-28881234'],
     address: ['广东省深圳市南山区科技园路88号', '上海市浦东新区世纪大道100号', '香港灣仔區軒尼詩道88號'],
     date: ['2025-06-18', '2024-11-06', '2023-09-21'],
-    plainText: ['这是一段用于表单测试的普通文本。', '请按实际业务流程完成后续审核。'],
+    plainText: [
+      '你做事认真负责，总能把细节处理得很到位。',
+      '你的沟通很清晰，让合作过程轻松又高效。',
+      '你很有耐心，总能给身边的人带来支持和信心。',
+      '你的想法很有创意，经常能带来新的启发。',
+      '你待人真诚友善，让大家都愿意与你合作。'
+    ],
     richText: [
       '<p><strong>测试标题：</strong>灵析已完成字段识别、规则匹配与自动填充校验。</p><p><font color="#2563eb">蓝色标记重点说明</font>，<font color="#16a34a">绿色标记流程通过</font>，请复核异常字段。</p>'
     ],
-    number: ['35', '128', '500000'],
+    number: ['1', '10', '100'],
     bankCard: {
       cn: [
         '6222021000011000014',
@@ -78,6 +84,44 @@ export const DEFAULT_TEST_DATA_LIBRARY = {
   }
 };
 
+const LEGACY_DEFAULT_TEST_DATA_POOLS = {
+  email: ['shanshan_test@163.com', 'shishanshan@lingxi360.cn', 'hill971211@gmail.com'],
+  plainText: ['这是一段用于表单测试的普通文本。', '请按实际业务流程完成后续审核。'],
+  number: ['35', '128', '500000']
+};
+
+function isSameDefaultPool(left = [], right = []) {
+  return Array.isArray(left)
+    && left.length === right.length
+    && left.every((item, index) => String(item || '').trim() === right[index]);
+}
+
+export function migrateDefaultEmailPool(pool = []) {
+  if (!Array.isArray(pool)) return pool;
+  return isSameDefaultPool(pool, LEGACY_DEFAULT_TEST_DATA_POOLS.email)
+    ? DEFAULT_TEST_DATA_LIBRARY.pools.email.slice()
+    : pool;
+}
+
+export function migrateTestDataLibraryDefaults(library = {}) {
+  const source = library && typeof library === 'object' ? library : {};
+  const currentVersion = Number(source.version || 1);
+  if (currentVersion >= DEFAULT_TEST_DATA_LIBRARY.version) return source;
+  const sourcePools = source.pools && typeof source.pools === 'object' ? source.pools : {};
+  const pools = { ...sourcePools };
+  for (const key of ['email', 'plainText', 'number']) {
+    const currentPool = sourcePools[key];
+    if (!Array.isArray(currentPool) || isSameDefaultPool(currentPool, LEGACY_DEFAULT_TEST_DATA_POOLS[key])) {
+      pools[key] = DEFAULT_TEST_DATA_LIBRARY.pools[key].slice();
+    }
+  }
+  return {
+    ...source,
+    version: DEFAULT_TEST_DATA_LIBRARY.version,
+    pools
+  };
+}
+
 export const DEFAULT_SETTINGS = {
   mode: 'content',
   provider: 'heuristic',
@@ -91,9 +135,9 @@ export const DEFAULT_SETTINGS = {
   debugLogs: true,
   emailPoolEnabled: true,
   emailPoolList: [
-    'shanshan_test@163.com',
-    'shishanshan@lingxi360.cn',
-    'hill971211@gmail.com'
+    'tester.one@example.com',
+    'tester.two@example.net',
+    'tester.three@example.org'
   ],
   mockRules: [],
   mockRuleCenter: {
