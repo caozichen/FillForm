@@ -1,5 +1,5 @@
 (function initFormPilotV2Scan() {
-  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-18-date-01';
+  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-18-name-salutation-01';
   if (window.FormPilotV2Scan?.__build === FORM_PILOT_V2_SCAN_BUILD) return;
 
   const EID_ATTR = 'data-formpilot-v2-eid';
@@ -1447,6 +1447,38 @@
     return '';
   }
 
+  function findNameSalutationTrigger(row, label = '', inputs = [], selectTriggers = []) {
+    if (!(row instanceof Element) || !inputs.length || !selectTriggers.length) return null;
+    const inputHint = normText([
+      label,
+      ...inputs.map((input) => [
+        getCustomRendererPlaceholder(input),
+        input.getAttribute('aria-label') || '',
+        input.getAttribute('name') || ''
+      ].join(' '))
+    ].join(' '));
+    if (!/(姓名|全名|名字|中文名|英文名|full\s*name|first\s*name|last\s*name|given\s*name|family\s*name|contact\s*name|applicant\s*name)/i.test(inputHint)) {
+      return null;
+    }
+    return selectTriggers.find((trigger) => {
+      const triggerHint = normText([
+        getCustomRendererPlaceholder(trigger),
+        trigger.textContent || '',
+        trigger.getAttribute('aria-label') || '',
+        trigger.getAttribute('name') || '',
+        trigger.getAttribute('data-placeholder') || ''
+      ].join(' '));
+      return /(稱謂|称谓|敬称|title[_\s-]*type|salutation|honou?rific|先生|女士|小姐|太太|博士|教授|\bmr\.?\b|\bmrs\.?\b|\bms\.?\b|\bmiss\b|\bdr\.?\b|\bprof\.?\b)/i.test(triggerHint);
+    }) || null;
+  }
+
+  function buildSalutationLabel(fieldLabel = '', trigger = null) {
+    const hint = normText(`${fieldLabel} ${getCustomRendererPlaceholder(trigger)} ${trigger?.textContent || ''}`);
+    return /[\u3400-\u9fff]/.test(hint)
+      ? `${fieldLabel || '姓名'}称谓`
+      : `${fieldLabel || 'Name'} salutation`;
+  }
+
   function inferCompositePrefixRole(kind = '', text = '') {
     const hint = normText(text);
     if (kind === 'phone') {
@@ -1883,6 +1915,42 @@
       const compositeTextInputs = Array.from(row.querySelectorAll('input, textarea, [contenteditable="true"]'))
         .filter((node) => isCustomRendererTextInput(node) && !node.disabled && visible(node));
       const hasCompositePrefix = selectTriggers.length > 0 || !!row.querySelector('.fb-runtime-mobile-area-code-trigger, .fb-runtime-id-card-doc-type-inner, [class*="mobile-area-code"], [class*="id-card-doc-type"]');
+      const salutationTrigger = findNameSalutationTrigger(row, label, compositeTextInputs, selectTriggers);
+      if (salutationTrigger instanceof Element) {
+        markCustomRendererNodes(skipNodes, row);
+        for (const input of compositeTextInputs) {
+          const placeholder = getCustomRendererPlaceholder(input);
+          const inferredKind = classifyField(input, label, placeholder, normText(row.innerText || '').slice(0, 220));
+          fields.push(buildCustomRendererField({
+            row,
+            locatorEl: input,
+            kind: ['fullName', 'firstName', 'lastName'].includes(inferredKind) ? inferredKind : 'fullName',
+            label,
+            placeholder,
+            extraMeta: {
+              componentGroup: true,
+              nameSalutationComposite: true
+            }
+          }));
+        }
+        const salutationLocator = resolveFieldLocatorElement(salutationTrigger, true);
+        fields.push(buildCustomRendererField({
+          row,
+          locatorEl: salutationLocator,
+          kind: 'select',
+          label: buildSalutationLabel(label, salutationTrigger),
+          placeholder: getCustomRendererPlaceholder(salutationTrigger),
+          options: collectSelectOptions(salutationTrigger),
+          extraMeta: {
+            componentGroup: true,
+            nameSalutationComposite: true,
+            salutation: true,
+            selectLike: true,
+            selectTriggerReason: resolveSelectTrigger(salutationTrigger).reason || '姓名称谓下拉框'
+          }
+        }));
+        continue;
+      }
       const compositeKind = hasCompositePrefix && compositeTextInputs.length ? inferCompositeInputKind(row, label, compositeTextInputs[0]) : '';
       if (compositeKind) {
         const input = compositeTextInputs[0];

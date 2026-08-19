@@ -31,7 +31,7 @@ function normText(input) {
 }
 
 const CONTENT_RUNTIME_FILES = ['content/scan.js', 'content/fill.js'];
-const CONTENT_RUNTIME_BUILD = '2026-03-27-13';
+const CONTENT_RUNTIME_BUILD = '2026-08-18-name-salutation-01';
 const contentRuntimeCache = new Map();
 const fillCancelState = new Map();
 const PENDING_MOCK_RULE_SEED_KEY = 'formPilotV2PendingMockRuleSeed';
