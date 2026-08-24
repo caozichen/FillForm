@@ -15,6 +15,13 @@ const onlyKindArg = cliArgs.find((arg) => arg.startsWith('--only-kind='));
 const onlyKind = onlyKindArg ? onlyKindArg.slice('--only-kind='.length).trim() : '';
 const fillOptionalFields = !cliArgs.includes('--required-only') && !cliArgs.includes('--fill-optional=false');
 const outDir = path.join(rootDir, 'outputs', 'recognition-check');
+const adapterScriptPaths = [
+  'native.js',
+  'element-ui.js',
+  'arco-design.js',
+  'custom-renderer.js',
+  'lingxi-legacy.js'
+].map((name) => path.join(rootDir, '.output', 'chrome-mv3', 'adapters', name));
 const scanScriptPath = path.join(rootDir, '.output', 'chrome-mv3', 'content', 'scan.js');
 const fillScriptPath = path.join(rootDir, '.output', 'chrome-mv3', 'content', 'fill.js');
 const detectEnginePath = path.join(rootDir, '.output', 'chrome-mv3', 'core', 'detectEngine.js');
@@ -380,6 +387,15 @@ async function main() {
       return;
     }
 
+    for (const adapterScriptPath of adapterScriptPaths) {
+      const adapterScript = await fs.readFile(adapterScriptPath, 'utf8');
+      await cdp.send('Runtime.evaluate', {
+        expression: `${adapterScript}\n//# sourceURL=formpilot-${path.basename(adapterScriptPath)}`,
+        awaitPromise: true,
+        returnByValue: false
+      }, 30000);
+    }
+
     const scanScript = await fs.readFile(scanScriptPath, 'utf8');
     await cdp.send('Runtime.evaluate', {
       expression: `${scanScript}\n//# sourceURL=formpilot-scan.js`,
@@ -497,6 +513,10 @@ async function main() {
         options: (field.options || []).map((option) => option.label || option.value).filter(Boolean),
         constraints: field.constraints || {},
         meta: {
+          adapterName: field.meta?.adapterName || '',
+          adapterWidget: field.meta?.adapterWidget || field.meta?.widget || '',
+          rowId: field.meta?.rowId || '',
+          fieldName: field.meta?.fieldName || '',
           segmented: !!field.meta?.segmented,
           selectLike: !!field.meta?.selectLike,
           componentGroup: !!field.meta?.componentGroup,

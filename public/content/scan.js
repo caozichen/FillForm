@@ -1,5 +1,5 @@
 (function initFormPilotV2Scan() {
-  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-18-name-salutation-01';
+  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-21-lingxi-legacy-01';
   if (window.FormPilotV2Scan?.__build === FORM_PILOT_V2_SCAN_BUILD) return;
 
   const EID_ATTR = 'data-formpilot-v2-eid';
@@ -2811,6 +2811,24 @@
     const skipNodes = new Set();
     const rootSelector = scopedRoot ? scopeSelector : buildSelector(root);
 
+    const legacyLingxiFields = window.FormPilotV2Adapters?.detectFields?.(['lingxiLegacy'], root, {
+      skipNodes,
+      visible,
+      ensureDomId,
+      findContainer,
+      getLabelText,
+      buildSelector,
+      buildScopedSelector,
+      buildLocatorCandidates,
+      buildContainerLocatorCandidates,
+      buildFieldFingerprint,
+      computeLocatorStability,
+      buildFieldConstraintsFromElements,
+      buildFieldEvidence,
+      inferRequiredFromContext,
+      collectSelectOptions,
+      isEditorToolbarElement
+    }) || [];
     const customRendererFields = detectCustomFormRendererFields(root, skipNodes);
     const addressFields = detectAddressComposite(root, skipNodes);
     const addressSelectFields = detectAddressSelectComposite(root, skipNodes);
@@ -2822,6 +2840,7 @@
     const basicFields = detectBasicFields(root, skipNodes);
 
     const fields = dedupeFields([
+      ...legacyLingxiFields,
       ...customRendererFields,
       ...addressFields,
       ...addressSelectFields,
@@ -2839,6 +2858,7 @@
       fields,
       summary: {
         total: fields.length,
+        legacyLingxi: legacyLingxiFields.length,
         customRenderer: customRendererFields.length
       }
     };

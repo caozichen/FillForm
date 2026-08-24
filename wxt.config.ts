@@ -45,6 +45,7 @@ export default defineConfig({
           'adapters/element-ui.js',
           'adapters/arco-design.js',
           'adapters/custom-renderer.js',
+          'adapters/lingxi-legacy.js',
           'content/scan.js',
           'content/fill.js',
           'content/agent.js'

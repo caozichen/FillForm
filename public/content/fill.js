@@ -1,5 +1,5 @@
 (function initFormPilotV2Fill() {
-  const FORM_PILOT_V2_FILL_BUILD = '2026-08-18-date-01';
+  const FORM_PILOT_V2_FILL_BUILD = '2026-08-21-lingxi-legacy-01';
   if (window.FormPilotV2Fill?.__build === FORM_PILOT_V2_FILL_BUILD) return;
 
   const utils = window.FormPilotV2Utils || {};
@@ -3996,6 +3996,25 @@
   }
 
   async function fillSingleField(field, value, root, strictScope, settings, context = {}) {
+    if (field?.meta?.adapterName === 'lingxiLegacy' || field?.meta?.componentAdapter === 'lingxiLegacy') {
+      const adapterResult = await window.FormPilotV2Adapters?.fillField?.(field, value, {
+        root,
+        strictScope,
+        settings,
+        findElement,
+        findContainerNode,
+        buildFillResult,
+        setNativeValue,
+        verifyTextLikeValue,
+        readSimpleValue,
+        readValidationErrorText,
+        visible,
+        normText,
+        sleep,
+        fireOptionClick
+      });
+      if (adapterResult != null) return adapterResult;
+    }
     if (field.kind === 'addressComponent') return fillAddressComponent(field, value, root, strictScope, settings);
     if (field.meta?.segmented) return fillSegmentedField(field, value, root, strictScope);
     const widget = getFieldWidget(field);
@@ -4448,6 +4467,21 @@
   function verifySingleFieldCompletion(field, root, strictScope = false, settings = {}) {
     if (!field || typeof field !== 'object') {
       return { id: '', kind: '', ok: false, reason: '字段无效' };
+    }
+
+    if (field?.meta?.adapterName === 'lingxiLegacy' || field?.meta?.componentAdapter === 'lingxiLegacy') {
+      const adapterResult = window.FormPilotV2Adapters?.verifyField?.(field, {
+        root,
+        strictScope,
+        settings,
+        findElement,
+        findContainerNode,
+        readSimpleValue,
+        readValidationErrorText,
+        visible,
+        normText
+      });
+      if (adapterResult != null) return adapterResult;
     }
 
     const widget = getFieldWidget(field);

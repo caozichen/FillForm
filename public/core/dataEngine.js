@@ -1300,7 +1300,9 @@ export function generateValueForField(field, settings = {}) {
       const value = pickConfiguredValue(settings, 'date');
       return value ? normalizeDateToHalfYearWindow(value) : value;
     }
-    if (kind === FIELD_KINDS.ADDRESS_COMPONENT) return null;
+    if (kind === FIELD_KINDS.ADDRESS_COMPONENT) {
+      return field?.meta?.adapterName === 'lingxiLegacy' ? pickConfiguredValue(settings, 'address') : null;
+    }
     if (kind === FIELD_KINDS.ADDRESS_DETAIL) return pickConfiguredValue(settings, 'address');
     if (kind === FIELD_KINDS.TEXT || kind === FIELD_KINDS.UNKNOWN) {
       return /富文本|rich\s*text|editor|编辑器|編輯器|wysiwyg/i.test(hint) ? pickConfiguredText(settings, hint) : null;

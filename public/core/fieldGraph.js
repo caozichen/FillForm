@@ -90,6 +90,9 @@ export function normalizeField(rawField, index = 0) {
           domId: normalizeText(opt?.domId || '')
         }))
       : [],
+    constraints: rawField?.meta?.adapterName === 'lingxiLegacy' && rawField.constraints && typeof rawField.constraints === 'object'
+      ? rawField.constraints
+      : {},
     meta: rawField.meta && typeof rawField.meta === 'object' ? rawField.meta : {}
   };
 }

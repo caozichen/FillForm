@@ -32,6 +32,14 @@ function isBankCardHint(hint = '') {
 }
 
 function isLikelyEditorControl(field) {
+  if (
+    field?.meta?.adapterName === 'lingxiLegacy' &&
+    (field.kind === FIELD_KINDS.RADIO_GROUP || field.kind === FIELD_KINDS.CHECKBOX_GROUP) &&
+    Array.isArray(field.options) &&
+    field.options.length > 0
+  ) {
+    return false;
+  }
   const hint = `${field.label || ''} ${field.placeholder || ''} ${field.context || ''} ${field.reason || ''}`;
   return EDITOR_CONTROL_HINT_RE.test(hint);
 }
@@ -208,6 +216,7 @@ function correctField(field) {
     corrected.kind &&
     corrected.kind !== FIELD_KINDS.TEXT &&
     corrected.kind !== FIELD_KINDS.UNKNOWN;
+  const preserveLegacyAdapterKind = corrected.meta?.adapterName === 'lingxiLegacy' && !!corrected.meta?.adapterWidget;
   const hasChoiceOptions = Array.isArray(corrected.options) && corrected.options.length > 0;
   const preserveStructuralKind =
     corrected.kind === FIELD_KINDS.ADDRESS_COMPONENT ||
@@ -216,7 +225,7 @@ function correctField(field) {
       (hasChoiceOptions || corrected.meta?.componentGroup || corrected.meta?.questionLike)
     );
   const detectedKind = detectKindFromHint(corrected);
-  if (!preserveMappedKind && !preserveStructuralKind && detectedKind && detectedKind !== corrected.kind) {
+  if (!preserveMappedKind && !preserveLegacyAdapterKind && !preserveStructuralKind && detectedKind && detectedKind !== corrected.kind) {
     corrected.kind = detectedKind;
     corrected.meta.correctedByDetectEngine = true;
     corrected.reasons = [...(corrected.reasons || [])];
@@ -226,7 +235,7 @@ function correctField(field) {
     corrected.confidence = Math.max(corrected.confidence || 0.5, corrected.score);
   }
 
-  if (!preserveMappedKind && !preserveStructuralKind && corrected.meta?.selectLike) {
+  if (!preserveMappedKind && !preserveLegacyAdapterKind && !preserveStructuralKind && corrected.meta?.selectLike) {
     corrected.kind = FIELD_KINDS.SELECT;
     corrected.meta.correctedByDetectEngine = true;
     corrected.reasons = [...(corrected.reasons || [])];
