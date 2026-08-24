@@ -229,32 +229,27 @@ FillForm/
 
 ## 运行
 
-本项目已通过 `.npmrc` 配置 npm 缓存，缓存目录为 `D:\Node\npm-cache`。
+项目使用当前设备的 Node.js 与 npm 默认缓存目录，macOS、Windows 和 Linux 均可使用相同命令。
 
-```powershell
-cd D:\chromecode\FillForm
-$env:Path = "D:\Node;" + $env:Path
-D:\Node\npm.cmd install
-D:\Node\npm.cmd run dev
+```bash
+npm install
+npm run dev
 ```
 
 生产构建：
 
-```powershell
-$env:Path = "D:\Node;" + $env:Path
-D:\Node\npm.cmd run build
+```bash
+npm run build
 ```
 
-然后在 `chrome://extensions` 中加载 `.output\chrome-mv3`。
-
-以上命令保留了项目当前的 Windows 和 PowerShell 运行方式。如果实际项目目录或 Node.js 安装目录不同，请替换对应的绝对路径。
+构建完成后会同时刷新仓库中的 `extension\chrome-mv3`。该目录会提交到 Git，其他设备 clone 或 pull 后无需安装依赖和重新构建，直接在 `chrome://extensions` 中加载即可。
 
 ## 常用命令
 
 | 命令 | 作用 |
 | --- | --- |
 | `npm run dev` | 启动 WXT 开发模式。 |
-| `npm run build` | 构建 Chrome Manifest V3 生产产物。 |
+| `npm run build` | 构建 Chrome Manifest V3 生产产物，并同步可提交的 `extension/chrome-mv3`。 |
 | `npm run check:hashids` | 校验内置 Hashids 项目的编码、解码和异常输入。 |
 | `npm run zip` | 打包扩展压缩包。 |
 
@@ -267,11 +262,11 @@ D:\Node\npm.cmd run build
 
 ## 加载扩展
 
-1. 执行生产构建。
+1. clone 或 pull 仓库；开发者修改源码后执行 `npm run build` 刷新扩展目录。
 2. 打开 `chrome://extensions`。
 3. 开启右上角“开发者模式”。
 4. 点击“加载已解压的扩展程序”。
-5. 选择 `.output\chrome-mv3`。
+5. 选择仓库中的 `extension\chrome-mv3`。
 6. 打开普通网页，点击工具栏中的 FillForm 图标，或使用页面右侧悬浮球。
 
 Chrome 内置页面、Chrome 扩展商店和其他禁止内容脚本注入的页面不能使用表单识别与填充。

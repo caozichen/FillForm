@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "dev": "wxt",
-    "build": "wxt build",
+    "build": "wxt build && node scripts/sync-extension.mjs",
     "check:hashids": "node scripts/check-hashids-crypto.mjs",
     "zip": "wxt zip",
     "postinstall": "wxt prepare"

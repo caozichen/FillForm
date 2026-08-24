@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FillForm</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-topbar">
+        <div>
+          <div class="popup-brand">FillForm</div>
+          <div class="popup-title">控制中心</div>
+        </div>
+        <button id="openOptionsBtn" class="popup-icon-btn" aria-label="打开设置中心">设置</button>
+      </header>
+
+      <section class="popup-card popup-tab-card">
+        <div class="popup-card-label">当前标签页</div>
+        <div id="tabInfo" class="popup-tab-info">读取中...</div>
+      </section>
+
+      <section class="popup-card popup-status-card">
+        <div>
+          <div class="popup-card-label">当前状态</div>
+          <div class="popup-online-row">
+            <span class="popup-online-dot"></span>
+            <span>在线</span>
+          </div>
+        </div>
+        <span id="statusBadge" class="popup-badge" data-tone="normal">等待操作</span>
+      </section>
+
+      <section class="popup-section">
+        <div class="popup-section-title">核心操作</div>
+        <div class="popup-action-grid">
+          <button id="scanBtn" class="popup-action-btn primary">识别字段</button>
+          <button id="fillBtn" class="popup-action-btn accent">一键填充</button>
+        </div>
+      </section>
+
+      <section class="popup-metrics">
+        <div class="popup-card popup-metric-card">
+          <div class="popup-card-label">已发现字段</div>
+          <div id="foundMetric" class="popup-metric-value">0</div>
+        </div>
+        <div class="popup-card popup-metric-card">
+          <div class="popup-card-label">填充完成度</div>
+          <div id="filledMetric" class="popup-metric-value success">0%</div>
+        </div>
+      </section>
+
+      <section class="popup-card popup-scope-card">
+        <div class="popup-card-label">区域填充（可选）</div>
+        <input id="scopeSelectorInput" class="popup-input" placeholder="输入区域 CSS 选择器，例如 #formA" />
+        <div class="popup-hint">留空表示全页面；填写后仅填充该区域内字段。</div>
+      </section>
+
+      <section class="popup-section">
+        <div class="popup-section-title">辅助工具</div>
+        <div class="popup-tool-list">
+          <button id="refreshTabBtn" class="popup-tool-btn">刷新标签页信息</button>
+          <button id="openSidepanelBtn" class="popup-tool-btn">尝试打开侧边栏</button>
+        </div>
+      </section>
+
+      <section class="popup-card popup-log-card">
+        <div class="popup-section-title on-dark">执行日志</div>
+        <pre id="logBox" class="popup-log">等待操作...</pre>
+      </section>
+
+      <section class="popup-card">
+        <div class="popup-section-title">识别结果</div>
+        <ul id="fieldList" class="popup-field-list"></ul>
+      </section>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

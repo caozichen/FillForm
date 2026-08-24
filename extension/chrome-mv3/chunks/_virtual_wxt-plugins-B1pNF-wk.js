@@ -1,0 +1,1 @@
+var e=`barcode-offscreen.html`,t=`formpilotv2:barcode-offscreen`,n=`formpilotv2:barcode-offscreen-ping`,r=`formpilotv2:barcode-offscreen-decode`;function i(){}export{t as a,n as i,r as n,e as r,i as t};

@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FillForm 设置中心</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-name">FillForm</div>
+          <div class="brand-sub">一键填充助手</div>
+        </div>
+
+        <nav class="side-nav">
+          <button class="side-link active" data-section-nav="baseSection">
+            <span class="side-icon">01</span>
+            <span>基础配置</span>
+          </button>
+          <button class="side-link" data-section-nav="modelSection">
+            <span class="side-icon">02</span>
+            <span>模型管理</span>
+          </button>
+          <button class="side-link" data-section-nav="dataSection">
+            <span class="side-icon">03</span>
+            <span>数据策略</span>
+          </button>
+          <button id="decryptSectionNav" class="side-link" data-section-nav="decryptSection" hidden>
+            <span class="side-icon">04</span>
+            <span>解密配置</span>
+          </button>
+          <!-- 模板中心暂时隐藏：保留入口代码，后续需要时去掉本段 HTML 注释即可恢复。
+          <button class="side-link" data-section-nav="templateSection">
+            <span class="side-icon">04</span>
+            <span>模板中心</span>
+          </button>
+          -->
+          <!-- 调试工具暂时隐藏：保留入口代码，后续需要时去掉本段 HTML 注释即可恢复。
+          <button class="side-link" data-section-nav="debugSection">
+            <span class="side-icon">05</span>
+            <span>调试工具</span>
+          </button>
+          -->
+        </nav>
+
+        <div class="sidebar-foot">
+          <div class="avatar">填</div>
+          <div>
+            <div class="sidebar-foot-title">FillForm</div>
+            <div class="sidebar-foot-sub">测试版</div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <div class="page-eyebrow">设置中心</div>
+            <h1>配置识别、填充与测试数据</h1>
+            <p class="page-sub">围绕 OA 测试场景管理执行模式、模型和测试数据策略。</p>
+          </div>
+          <div class="topbar-actions">
+            <span id="saveStatus" class="save-status" role="status" aria-live="polite"></span>
+            <button id="saveBtn" class="btn primary">保存配置</button>
+          </div>
+        </header>
+
+        <!-- 顶部模板/调试页签暂时隐藏：保留代码，后续需要时去掉本段 HTML 注释即可恢复。
+        <div class="page-tabs">
+          <button class="page-tab active" data-section-nav="baseSection">设置</button>
+          <button class="page-tab" data-section-nav="templateSection">模板</button>
+          <button class="page-tab" data-section-nav="debugSection">调试</button>
+        </div>
+        -->
+
+        <section id="baseSection" class="panel section-anchor">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">基础配置</div>
+              <h2>控制 FillForm 的主工作模式与入口体验</h2>
+            </div>
+            <p>这里的设置决定页面内入口、执行方式以及默认自动化行为。</p>
+          </div>
+
+          <div class="hero-grid">
+            <div class="setting-card accent-card mode-provider-card">
+              <span class="card-kicker">Execution & Provider</span>
+              <div class="mode-provider-grid">
+                <label class="mode-provider-field">
+                  <span class="setting-title">执行模式</span>
+                  <span class="setting-desc">选择当前以本地 mock 还是大模型实验模式运行。</span>
+                  <select id="mode">
+                    <option value="content">content（本地 mock，推荐）</option>
+                    <option value="cdp" disabled>cdp（实验中，暂不可用）</option>
+                  </select>
+                </label>
+                <label class="mode-provider-field">
+                  <span class="setting-title">数据提供方</span>
+                  <span class="setting-desc">切换 heuristic、DeepSeek、OpenAI 或 Zhipu GLM 的数据生成来源。</span>
+                  <select id="provider">
+                    <option value="heuristic">heuristic</option>
+                    <option value="deepseek">deepseek</option>
+                    <option value="openai">openai</option>
+                    <option value="zhipu">zhipu</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-card soft-card tab-control-card">
+              <div class="tab-control-head">
+                <div>
+                  <span class="card-kicker">CONTROL</span>
+                  <span class="setting-title">界面 Tab 控制</span>
+                  <span class="setting-desc">控制页面控制面板底部需要展示的功能 Tab。</span>
+                </div>
+                <button id="tabControlSaveBtn" class="btn secondary" type="button">保存</button>
+              </div>
+              <div class="tab-control-options" role="group" aria-label="界面 Tab 控制">
+                <label class="tab-control-option">
+                  <input type="checkbox" name="visibleTabs" value="ui" checked />
+                  <span>界面面板</span>
+                </label>
+                <label class="tab-control-option">
+                  <input type="checkbox" name="visibleTabs" value="qr" checked />
+                  <span>二维码面板</span>
+                </label>
+                <label class="tab-control-option">
+                  <input type="checkbox" name="visibleTabs" value="api" />
+                  <span>API 面板</span>
+                </label>
+                <label class="tab-control-option">
+                  <input type="checkbox" name="visibleTabs" value="crypto" data-protected-tab="crypto" />
+                  <span>数据加解</span>
+                </label>
+              </div>
+              <div id="tabControlError" class="tab-control-error" hidden>请至少选择一个展示Tab</div>
+              <div id="tabControlStatus" class="tab-control-status" hidden></div>
+            </div>
+          </div>
+
+          <div class="toggle-list">
+            <label class="toggle-row">
+              <span class="toggle-copy">
+                <span class="toggle-title">启用悬浮球入口</span>
+                <span class="toggle-desc">在页面右侧常驻显示 FillForm 入口球，便于测试时快速展开控制中心。</span>
+              </span>
+              <span class="switch"><input type="checkbox" id="floatingEnabled" /><span class="switch-ui"></span></span>
+            </label>
+
+            <label class="toggle-row">
+              <span class="toggle-copy">
+                <span class="toggle-title">启用页面内控制面板</span>
+                <span class="toggle-desc">点击悬浮球后在页面右侧展开控制面板，避免依赖浏览器侧边栏。</span>
+              </span>
+              <span class="switch"><input type="checkbox" id="inlinePanelEnabled" /><span class="switch-ui"></span></span>
+            </label>
+
+            <label class="toggle-row">
+              <span class="toggle-copy">
+                <span class="toggle-title">填充单选 / 复选</span>
+                <span class="toggle-desc">允许 FillForm 自动勾选单选、多选和类似选项组，适合批量冒烟与回归。</span>
+              </span>
+              <span class="switch"><input type="checkbox" id="fillRadioCheckbox" /><span class="switch-ui"></span></span>
+            </label>
+
+            <label class="toggle-row">
+              <span class="toggle-copy">
+                <span class="toggle-title">填写全部字段</span>
+                <span class="toggle-desc">开启后必填和非必填都会填写；关闭后只填写识别为必填的字段。</span>
+              </span>
+              <span class="switch"><input type="checkbox" id="fillOptionalFields" /><span class="switch-ui"></span></span>
+            </label>
+
+            <label class="toggle-row">
+              <span class="toggle-copy">
+                <span class="toggle-title">是否翻页填充</span>
+                <span class="toggle-desc">开启后会逐页填充并自动进入下一页，遇到提交或支付按钮页后停止，不会自动提交。</span>
+              </span>
+              <span class="switch"><input type="checkbox" id="paginateFillEnabled" /><span class="switch-ui"></span></span>
+            </label>
+
+            <label class="toggle-row">
+              <span class="toggle-copy">
+                <span class="toggle-title">输出调试日志</span>
+                <span class="toggle-desc">保留识别与填充阶段的调试信息，便于现场排查与日志复核。</span>
+              </span>
+              <span class="switch"><input type="checkbox" id="debugLogs" /><span class="switch-ui"></span></span>
+            </label>
+          </div>
+        </section>
+
+        <section id="modelSection" class="panel section-anchor">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">模型管理</div>
+              <h2>管理云端模型接入配置</h2>
+            </div>
+            <p>保留现有 ID 和存储逻辑，方便你直接切换到 DeepSeek、OpenAI 或 Zhipu GLM 进行实验。</p>
+          </div>
+
+          <div class="provider-columns">
+            <div class="provider-card">
+              <div class="provider-card-head">
+                <div>
+                  <div class="provider-head">DeepSeek</div>
+                  <div class="provider-note">适合文本理解与轻量字段语义生成。</div>
+                </div>
+                <span class="provider-badge">文本模型</span>
+              </div>
+              <label>
+                <span>Base URL</span>
+                <input id="deepseekBaseUrl" />
+              </label>
+              <label>
+                <span>Model</span>
+                <input id="deepseekModel" />
+              </label>
+              <label>
+                <span>API Key</span>
+                <input id="deepseekApiKey" type="password" placeholder="sk-..." />
+              </label>
+            </div>
+
+            <div class="provider-card">
+              <div class="provider-card-head">
+                <div>
+                  <div class="provider-head">OpenAI</div>
+                  <div class="provider-note">适合后续做复杂字段推理和低置信兜底。</div>
+                </div>
+                <span class="provider-badge">通用模型</span>
+              </div>
+              <label>
+                <span>Base URL</span>
+                <input id="openaiBaseUrl" />
+              </label>
+              <div class="openai-model-reasoning-row">
+                <label>
+                  <span>Model</span>
+                  <input id="openaiModel" />
+                </label>
+                <label>
+                  <span>Reasoning</span>
+                  <select id="openaiReasoningEffort">
+                    <option value="none">none</option>
+                    <option value="minimal">minimal</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                <span>API Key</span>
+                <input id="openaiApiKey" type="password" placeholder="sk-..." />
+              </label>
+            </div>
+
+            <div class="provider-card">
+              <div class="provider-card-head">
+                <div>
+                  <div class="provider-head">智谱 GLM</div>
+                  <div class="provider-note">适合接入 GLM-5 系列，支持结构化 JSON 输出。</div>
+                </div>
+                <span class="provider-badge">国产模型</span>
+              </div>
+              <label>
+                <span>Base URL</span>
+                <input id="zhipuBaseUrl" />
+              </label>
+              <div class="provider-inline-row">
+                <label>
+                  <span>Model</span>
+                  <input id="zhipuModel" />
+                </label>
+                <label>
+                  <span>Thinking</span>
+                  <select id="zhipuThinkingType">
+                    <option value="disabled">disabled</option>
+                    <option value="enabled">enabled</option>
+                  </select>
+                </label>
+              </div>
+              <div class="provider-inline-row">
+                <label>
+                  <span>Reasoning</span>
+                  <select id="zhipuReasoningEffort">
+                    <option value="none">none</option>
+                    <option value="minimal">minimal</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                    <option value="max">max</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Max Tokens</span>
+                  <input id="zhipuMaxTokens" type="number" min="64" max="8192" step="64" />
+                </label>
+              </div>
+              <label>
+                <span>API Key</span>
+                <input id="zhipuApiKey" type="password" placeholder="请输入智谱 API Key" />
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-card" style="margin-top:16px">
+            <div class="setting-title">生成温度（Temperature）</div>
+            <div class="setting-desc">控制 LLM 输出随机性，0 最稳定，1 最多样。推荐 0.2。</div>
+            <label style="display:flex;align-items:center;gap:12px;margin-top:8px">
+              <input id="temperature" type="range" min="0" max="1" step="0.05" value="0.2" style="flex:1" />
+              <span id="temperatureDisplay" style="min-width:32px;text-align:right;font-weight:700">0.2</span>
+            </label>
+          </div>
+
+          <div class="setting-card" style="margin-top:16px">
+            <div class="setting-title">测试模型连接</div>
+            <div class="setting-desc">验证当前配置的 provider 是否可达，结果将显示延迟和错误信息。</div>
+            <div class="actions" style="margin-top:12px">
+              <button id="testConnectionBtn" class="btn secondary">测试连接</button>
+              <span id="testConnectionResult" style="margin-left:12px;font-size:13px;color:var(--muted)"></span>
+            </div>
+          </div>
+        </section>
+
+        <section id="dataSection" class="panel section-anchor">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">数据策略</div>
+              <h2>测试数据管理</h2>
+            </div>
+            <p>按题型维护可复用测试数据。自动填充会优先使用这里配置的数据，后续调用功能也会从同一份数据池读取。</p>
+          </div>
+
+          <div class="setting-card test-data-toolbar">
+              <label class="toggle-row compact">
+                <span class="toggle-copy">
+                  <span class="toggle-title">启用测试数据池</span>
+                  <span class="toggle-desc">开启后，姓名、手机号、邮箱、证件号、文件等字段会优先读取下方数据。</span>
+                </span>
+                <span class="switch"><input type="checkbox" id="testDataEnabled" /><span class="switch-ui"></span></span>
+              </label>
+              <div id="testDataSummary" class="test-data-summary">已准备 0 类测试数据</div>
+          </div>
+
+          <div class="test-data-grid">
+            <div class="setting-card data-card test-data-card">
+              <div>
+                <div class="setting-title">姓名</div>
+                <div class="setting-desc">中文姓名与英文姓名分开维护，姓名字段会按页面提示自动取用。</div>
+              </div>
+              <div class="test-data-subgrid two">
+                <label>
+                  <span>中文姓名（每行一个）</span>
+                  <textarea id="testDataChineseName" rows="5"></textarea>
+                </label>
+                <label>
+                  <span>英文姓名（每行一个）</span>
+                  <textarea id="testDataEnglishName" rows="5"></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-card data-card test-data-card">
+              <div>
+                <div class="setting-title">手机号</div>
+                <div class="setting-desc">区分中国内地、香港、澳门。填充时会根据字段提示或号码区号选择。</div>
+              </div>
+              <div class="test-data-subgrid three">
+                <label>
+                  <span>中国内地手机号</span>
+                  <textarea id="testDataMobileCn" rows="5"></textarea>
+                </label>
+                <label>
+                  <span>香港手机号</span>
+                  <textarea id="testDataMobileHk" rows="5"></textarea>
+                </label>
+                <label>
+                  <span>澳门手机号</span>
+                  <textarea id="testDataMobileMo" rows="5"></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-card data-card test-data-card">
+              <div>
+                <div class="setting-title">邮箱</div>
+                <div class="setting-desc">注册、登录、验证码等邮箱字段会优先使用这里的数据。</div>
+              </div>
+              <label>
+                <span>邮箱（每行一个）</span>
+                <textarea id="testDataEmail" rows="5"></textarea>
+              </label>
+            </div>
+
+            <div class="setting-card data-card test-data-card">
+              <div>
+                <div class="setting-title">公司信息</div>
+                <div class="setting-desc">公司名称和统一社会信用代码会优先用于企业/机构注册类表单。</div>
+              </div>
+              <div class="test-data-subgrid two">
+                <label>
+                  <span>公司名称（每行一个）</span>
+                  <textarea id="testDataCompanyName" rows="5"></textarea>
+                </label>
+                <label>
+                  <span>社会信用代码（每行一个）</span>
+                  <textarea id="testDataSocialCreditCode" rows="5"></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-card data-card test-data-card">
+              <div>
+                <div class="setting-title">身份证号 / 证件号</div>
+                <div class="setting-desc">支持中国内地身份证号、港澳台居民证号、护照号分开维护。</div>
+              </div>
+              <div class="test-data-subgrid three">
+                <label>
+                  <span>中国内地身份证号</span>
+                  <textarea id="testDataIdCn" rows="5"></textarea>
+                </label>
+                <label>
+                  <span>港澳台居民证号</span>
+                  <textarea id="testDataIdHmt" rows="5"></textarea>
+                </label>
+                <label>
+                  <span>护照号</span>
+                  <textarea id="testDataPassport" rows="5"></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-card data-card test-data-card compact-test-data-card">
+              <div>
+                <div class="setting-title">固定电话与常用地址</div>
+                <div class="setting-desc">固定电话和地址字段会优先从这里随机取一条。</div>
+              </div>
+              <div class="test-data-subgrid two">
+                <label>
+                  <span>固定电话</span>
+                  <textarea id="testDataLandline" rows="5"></textarea>
+                </label>
+                <label>
+                  <span>常用地址</span>
+                  <textarea id="testDataAddress" rows="5"></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-card data-card test-data-card">
+              <div>
+                <div class="setting-title">日期、普通文本与数字</div>
+                <div class="setting-desc">日期用于日期/时间字段，普通文本用于输入框，数字用于金额、人数、数量等字段。</div>
+              </div>
+              <div class="test-data-subgrid three">
+                <label>
+                  <span>日期</span>
+                  <textarea id="testDataDate" rows="4"></textarea>
+                </label>
+                <label>
+                  <span>数字</span>
+                  <textarea id="testDataNumber" rows="4"></textarea>
+                </label>
+                <label>
+                  <span>普通文本内容</span>
+                  <textarea id="testDataPlainText" rows="5"></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-card data-card test-data-card bank-card-data-card">
+              <div>
+                <div class="setting-title">银行卡号</div>
+                <div class="setting-desc">用于中国境内和香港银行卡号字段，填充时会根据字段提示自动取用对应地区的数据。</div>
+              </div>
+              <div class="test-data-subgrid two">
+                <label>
+                  <span>中国境内银行卡号</span>
+                  <textarea id="testDataBankCardCn" rows="5"></textarea>
+                </label>
+                <label>
+                  <span>香港银行卡号</span>
+                  <textarea id="testDataBankCardHk" rows="4"></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-card data-card test-data-card rich-text-card" id="testDataRichTextCard">
+              <div class="rich-text-card-head">
+                <div>
+                  <div class="setting-title">富文本内容</div>
+                  <div class="setting-desc">用于富文本编辑器类字段。默认显示转换后的实际效果，开启源码后可直接维护 HTML。</div>
+                </div>
+                <label class="rich-mode-toggle">
+                  <span>源码</span>
+                  <span class="switch"><input type="checkbox" id="testDataRichTextSourceMode" /><span class="switch-ui"></span></span>
+                </label>
+              </div>
+              <div class="rich-text-editor-wrap">
+                <div class="rich-text-toolbar" aria-label="富文本工具栏">
+                  <button type="button" class="rich-tool-btn" data-rich-command="bold" title="加粗">B</button>
+                  <button type="button" class="rich-tool-btn italic" data-rich-command="italic" title="斜体">I</button>
+                  <button type="button" class="rich-tool-btn underline" data-rich-command="underline" title="下划线">U</button>
+                  <label class="rich-color-control" title="字体颜色">
+                    <span>颜色</span>
+                    <input type="color" id="testDataRichTextColor" value="#2563eb" aria-label="字体颜色" />
+                  </label>
+                  <button type="button" class="rich-tool-btn" data-rich-command="insertUnorderedList" title="项目列表">列表</button>
+                  <button type="button" class="rich-tool-btn" data-rich-command="formatBlock" data-rich-value="p" title="正文">正文</button>
+                </div>
+                <div id="testDataRichTextEditor" class="rich-text-editor" contenteditable="true" role="textbox" aria-label="富文本内容"></div>
+                <textarea id="testDataRichText" class="rich-text-source" rows="5" spellcheck="false" aria-label="富文本源码"></textarea>
+              </div>
+              <div id="testDataRichTextError" class="rich-text-error" role="alert"></div>
+            </div>
+          </div>
+
+          <div class="setting-card data-card-wide test-data-file-card">
+            <div>
+              <div class="setting-title">文件</div>
+              <div class="setting-desc">上传后按文档类、图片类、视频类、音频类、压缩包类保存。文件会以 base64 存储，填充文件上传字段时可直接注入。</div>
+            </div>
+            <input type="file" id="fileUploadInput" multiple accept="*/*" style="display:none">
+            <div class="file-upload-controls">
+              <select id="fileUploadCategory">
+                <option value="auto">自动识别分类</option>
+                <option value="document">文档类</option>
+                <option value="image">图片类</option>
+                <option value="video">视频类</option>
+                <option value="audio">音频类</option>
+                <option value="archive">压缩包类</option>
+              </select>
+              <button type="button" id="fileUploadClearBtn" class="option-btn danger">清除所有文件</button>
+            </div>
+            <div id="fileUploadDropZone" class="file-upload-dropzone" role="button" tabindex="0">
+              <button type="button" id="fileUploadBtn" class="option-btn">选择文件</button>
+              <span>也可以把文件拖拽到这里，支持一次选择多个文件</span>
+            </div>
+            <ul id="fileUploadList" class="file-store-list"></ul>
+          </div>
+
+          <!-- 高级字段调用规则暂时隐藏：保留完整代码，后续需要时去掉本段 HTML 注释即可恢复。
+          <div class="setting-card data-card-wide">
+              <div class="setting-title">高级字段调用规则</div>
+              <div class="setting-desc">这里保留旧版 Mock 规则能力：当某个字段需要固定命中特定数据时，可以按网址、字段关键词和题型添加规则。</div>
+              <div class="mock-rule-form">
+                <input id="mockRuleScope" type="text" placeholder="作用路径，可选：例如 console.cloud.google.com/..." />
+                <input id="mockRuleMatch" type="text" placeholder="匹配关键词，例如：手机号、机构宗旨、姓名" />
+                <select id="mockRuleKind">
+                  <option value="any">全部类型</option>
+                  <option value="text">文本</option>
+                  <option value="phone">手机号</option>
+                  <option value="tel">固定电话</option>
+                  <option value="fullName">姓名</option>
+                  <option value="firstName">名字</option>
+                  <option value="lastName">姓氏</option>
+                  <option value="companyName">企业名称</option>
+                  <option value="companyId">企业编号/登记号</option>
+                  <option value="email">邮箱</option>
+                  <option value="verification">验证码</option>
+                  <option value="idcard">证件号</option>
+                  <option value="bankCard">银行卡号</option>
+                  <option value="date">日期</option>
+                  <option value="jobTitle">职位</option>
+                  <option value="select">下拉选择</option>
+                  <option value="radioGroup">单选组</option>
+                  <option value="checkboxGroup">多选组</option>
+                  <option value="addressComponent">地址组件</option>
+                  <option value="addressDetail">地址明细</option>
+                  <option value="file">文件上传</option>
+                </select>
+                <select id="mockRulePreset">
+                  <option value="fixed">固定文本</option>
+                  <option value="cnPhone">大陆手机号</option>
+                  <option value="hkPhone">香港手机号</option>
+                  <option value="cnLandline">大陆固定电话</option>
+                  <option value="hkLandline">香港固定电话</option>
+                  <option value="cnName">中国大陆姓名</option>
+                  <option value="enName">英文姓名</option>
+                  <option value="cnFirstName">中文名字</option>
+                  <option value="cnLastName">中文姓氏</option>
+                  <option value="enFirstName">英文名字</option>
+                  <option value="enLastName">英文姓氏</option>
+                  <option value="companyZh">中文企业名称</option>
+                  <option value="companyEn">英文企业名称</option>
+                  <option value="companyGov">政府机构名称</option>
+                  <option value="date">随机日期</option>
+                  <option value="dateOld">一年以前日期</option>
+                  <option value="selectRandom">随机下拉</option>
+                  <option value="radioRandom">随机单选</option>
+                  <option value="checkboxRandom">随机复选</option>
+                  <option value="address">大陆地址</option>
+                  <option value="addressHk">香港地址</option>
+                  <option value="emailRandom">随机邮箱</option>
+                  <option value="phoneRandom">随机手机号</option>
+                  <option value="moPhone">澳门手机号</option>
+                  <option value="cnIdcard">中国内地身份证号</option>
+                  <option value="hmtResidentId">港澳台居民证号</option>
+                  <option value="passportNo">护照号</option>
+                  <option value="websiteCn">中文官网地址</option>
+                  <option value="websiteGlobal">国际官网地址</option>
+                  <option value="orgMission">机构宗旨</option>
+                  <option value="serviceContent">主要服务内容</option>
+                  <option value="companyIntro">机构/企业简介</option>
+                  <option value="projectDescription">项目描述</option>
+                  <option value="employeeCount">员工人数</option>
+                  <option value="amountBudget">预算金额</option>
+                  <option value="departmentName">部门名称</option>
+                  <option value="jobTitleZh">中文职位</option>
+                  <option value="jobTitleEn">英文职位</option>
+                </select>
+                <input id="mockRuleValue" type="text" placeholder="固定值（仅固定文本时填写）" />
+                <button type="button" id="mockRuleAddBtn" class="option-btn">添加规则</button>
+              </div>
+              <div class="mock-preset-catalog">
+                <div class="setting-desc">内置规则总览（可一键带入）：</div>
+                <ul id="mockPresetCatalogList" class="mock-preset-catalog-list"></ul>
+              </div>
+              <ul id="mockRuleList" class="mock-rule-list"></ul>
+              <div id="mockRuleEmpty" class="mock-rule-empty">暂无 Mock 规则</div>
+          </div>
+          -->
+
+          <!-- 手动字段库暂时隐藏：保留完整代码，后续需要时去掉本段 HTML 注释即可恢复。
+          <div class="setting-card data-card-wide">
+            <div class="setting-title">手动字段库</div>
+            <div class="setting-desc">自动记录你在页面中手动补点过的字段，按网址、路径与文案归档，可一键带入 Mock 规则编辑器。</div>
+            <ul id="manualFieldLibraryList" class="manual-field-library-list"></ul>
+            <div id="manualFieldLibraryEmpty" class="mock-rule-empty">暂无手动字段记录</div>
+          </div>
+          -->
+        </section>
+
+        <!-- 模板中心暂时隐藏：保留完整代码，后续需要时去掉本段 HTML 注释即可恢复。
+        <section id="templateSection" class="panel section-anchor">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">模板中心</div>
+              <h2>管理 UI 模板与 API 流程模板</h2>
+            </div>
+               <p>可在此处快速查看模板统计，或点击下方按钮打开完整模板中心进行编辑与执行。</p>
+          </div>
+
+          <div class="setting-card" style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+            <div>
+              <div class="setting-title">打开完整模板中心</div>
+              <div class="setting-desc">在独立页面管理页面模板和 API 流程模板，支持 curl 解析、步骤编排和执行日志。</div>
+            </div>
+            <button id="openTemplateCenterBtn" class="btn primary" style="flex-shrink:0">打开模板中心 →</button>
+          </div>
+
+          <div class="template-stats">          <div class="stat-card emphasis">
+              <div class="stat-label">模板总数</div>
+              <div id="templateCount" class="stat-value">0</div>
+              <div class="stat-note">UI 与 API 模板合计</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">UI 模板</div>
+              <div id="uiTemplateCount" class="stat-value">0</div>
+              <div class="stat-note">页面录制与表单模板</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">API 模板</div>
+              <div id="apiTemplateCount" class="stat-value">0</div>
+              <div class="stat-note">curl 解析保存的流程模板</div>
+            </div>
+          </div>
+
+          <div class="mapping-workbench glass-card">
+            <div class="template-card-head">
+              <div>
+                <div class="setting-title">字段映射模板与识别视图</div>
+                <div class="setting-desc">展示当前标签页路径的映射模板、字段映射字典和可填充字段快照。</div>
+              </div>
+              <span class="pill">映射库</span>
+            </div>
+
+            <div id="mappingPathInfo" class="mapping-path">当前路径：-</div>
+            <div class="actions">
+              <button id="refreshMappingBtn" class="btn secondary">刷新映射数据</button>
+              <button id="rescanMappingBtn" class="btn secondary">重新识别当前页字段</button>
+            </div>
+
+            <div class="runner-output-grid">
+              <div class="runner-panel">
+                <div class="runner-panel-head">路径模板（<span id="mappingTemplateCount">0</span>）</div>
+                <ul id="mappingTemplateList" class="mapping-list"></ul>
+              </div>
+              <div class="runner-panel">
+                <div class="runner-panel-head">字段映射（<span id="mappingFieldCount">0</span>）</div>
+                <ul id="mappingFieldList" class="mapping-list"></ul>
+              </div>
+            </div>
+
+            <div class="runner-panel">
+              <div class="runner-panel-head">当前页可填充字段（<span id="mappingScanCount">0</span>）</div>
+              <ul id="mappingScanList" class="mapping-list"></ul>
+            </div>
+          </div>
+
+          <div class="template-workbench">
+            <div class="template-editor glass-card">
+              <div class="template-card-head">
+                <div>
+                  <div class="setting-title">API 模板编辑器</div>
+                  <div class="setting-desc">粘贴 curl 命令后解析，再保存到模板库。</div>
+                </div>
+                <span class="pill">API</span>
+              </div>
+
+              <label>
+                <span>粘贴 curl 命令</span>
+                <textarea id="curlInput" rows="8" placeholder="curl 'https://api.example.com' -H 'content-type: application/json' --data-raw '{\"a\":1}'"></textarea>
+              </label>
+
+              <div class="actions">
+                <button id="parseCurlBtn" class="btn secondary">解析 curl</button>
+                <button id="saveApiTemplateBtn" class="btn primary">保存为 API 模板</button>
+              </div>
+
+              <pre id="curlResult" class="code"></pre>
+            </div>
+
+            <div class="template-list-wrap glass-card">
+              <div class="template-title-row">
+                <div>
+                  <h3>模板列表</h3>
+                  <span class="template-sub">当前展示本地已保存的 UI / API 模板</span>
+                </div>
+                <span class="pill neutral">本地存储</span>
+              </div>
+              <ul id="templateList" class="template-list"></ul>
+            </div>
+          </div>
+
+          <div class="template-runner glass-card">
+            <div class="template-card-head">
+              <div>
+                <div class="setting-title">模板执行工作台</div>
+                <div class="setting-desc">在设置页内完成模板选择、执行参数配置和运行日志查看，形成最小可用闭环。</div>
+              </div>
+              <span id="runnerStatus" class="pill neutral">待执行</span>
+            </div>
+
+            <div class="runner-grid">
+              <label>
+                <span>选择 API 模板</span>
+                <select id="runnerTemplateSelect">
+                  <option value="">请选择一个 API 模板</option>
+                </select>
+              </label>
+
+              <div id="runnerTemplateSummary" class="runner-summary">
+                请选择一个 API 模板，右侧会展示接口摘要、执行参数和最新请求预览。
+              </div>
+
+              <label>
+                <span>循环次数</span>
+                <input id="runnerLoopCount" type="number" min="1" step="1" value="1" />
+              </label>
+
+              <label>
+                <span>间隔（毫秒）</span>
+                <input id="runnerIntervalMs" type="number" min="0" step="100" value="300" />
+              </label>
+
+              <label>
+                <span>失败重试次数</span>
+                <input id="runnerRetryCount" type="number" min="0" step="1" value="1" />
+              </label>
+
+              <label>
+                <span>请求体覆写（可选 JSON）</span>
+                <textarea id="runnerBodyPatch" rows="5" placeholder="{&quot;contact&quot;:{&quot;email&quot;:&quot;{{email}}&quot;}}"></textarea>
+              </label>
+            </div>
+
+            <div class="actions">
+              <button id="loadRunnerTemplateBtn" class="btn secondary">载入到编辑器</button>
+              <button id="runTemplateBtn" class="btn primary">执行所选模板</button>
+              <button id="stopTemplateBtn" class="btn secondary">停止执行</button>
+              <button id="clearRunnerLogBtn" class="btn secondary">清空日志</button>
+            </div>
+
+            <div class="runner-output-grid">
+              <div class="runner-panel">
+                <div class="runner-panel-head">请求预览</div>
+                <pre id="runnerRequestPreview" class="code compact"></pre>
+              </div>
+              <div class="runner-panel">
+                <div class="runner-panel-head">运行日志</div>
+                <pre id="runnerLog" class="code compact"></pre>
+              </div>
+            </div>
+          </div>
+        </section>
+        -->
+
+        <!-- 调试工具暂时隐藏：保留完整代码，后续需要时去掉本段 HTML 注释即可恢复。
+        <section id="debugSection" class="panel section-anchor">
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">调试工具</div>
+              <h2>保留轻量化的调试与收尾动作</h2>
+            </div>
+            <p>这一块先保持轻量，不额外引入复杂交互，方便后续继续扩展。</p>
+          </div>
+
+          <div class="debug-card">
+            <div>
+              <div class="setting-title">当前版本</div>
+              <div class="setting-desc">FillForm 测试版</div>
+            </div>
+            <button id="saveBtnBottom" class="btn primary">保存配置</button>
+          </div>
+        </section>
+        -->
+
+        <section id="decryptSection" class="panel section-anchor decrypt-section" hidden>
+          <div class="section-head">
+            <div>
+              <div class="section-eyebrow">解密配置</div>
+              <h2>管理需要启用的解密项目</h2>
+            </div>
+            <p>维护项目名称、盐值和最小长度。</p>
+          </div>
+
+          <div class="decrypt-card">
+            <div class="decrypt-card-head">
+              <div>
+                <div class="setting-title">启用项目</div>
+                <div class="setting-desc">按已保存的项目名称展示，可不选，也可同时选择多个项目。</div>
+              </div>
+              <button id="decryptConfigEditBtn" class="icon-btn decrypt-edit-btn" type="button" aria-label="编辑解密配置" title="编辑解密配置">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+              </button>
+            </div>
+
+            <div id="decryptProjectOptions" class="decrypt-option-list" aria-label="解密项目启用选择"></div>
+            <div id="decryptConfigEmpty" class="decrypt-empty">暂无解密项目，点击右上角编辑添加。</div>
+
+            <div id="decryptConfigEditor" class="decrypt-editor" hidden>
+              <div class="decrypt-divider"></div>
+              <div class="decrypt-editor-head">
+                <div>
+                  <div class="setting-title">项目配置</div>
+                  <div class="setting-desc">每行的项目名称、盐值、最小长度都必填。</div>
+                </div>
+                <button id="decryptConfigAddRowBtn" class="btn secondary" type="button">新增项目</button>
+              </div>
+
+              <div class="decrypt-table-wrap">
+                <table class="decrypt-table">
+                  <thead>
+                    <tr>
+                      <th>项目名称</th>
+                      <th>盐值</th>
+                      <th>最小长度</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="decryptConfigTableBody"></tbody>
+                </table>
+              </div>
+
+              <div id="decryptConfigError" class="decrypt-config-error" hidden></div>
+              <div class="actions decrypt-actions">
+                <button id="decryptConfigCancelBtn" class="btn secondary" type="button">取消</button>
+                <button id="decryptConfigSaveBtn" class="btn primary" type="button">保存</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <footer class="page-copyright">Copyright © 2026 灵析测试部</footer>
+      </main>
+    </div>
+
+    <div id="decryptVisibilityMessage" class="decrypt-visibility-message" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="options.js"></script>
+
+    <div id="tabPasswordModal" class="modal-backdrop" hidden>
+      <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="tabPasswordTitle">
+        <div>
+          <div id="tabPasswordTitle" class="setting-title">输入密码</div>
+          <div class="setting-desc">启用数据加解需要验证密码。</div>
+        </div>
+        <input id="tabPasswordInput" type="password" autocomplete="current-password" placeholder="请输入密码" />
+        <div id="tabPasswordError" class="tab-password-error" hidden>密码错误</div>
+        <div class="actions password-modal-actions">
+          <button id="tabPasswordCancelBtn" class="btn secondary" type="button">取消</button>
+          <button id="tabPasswordConfirmBtn" class="btn primary" type="button">确认</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

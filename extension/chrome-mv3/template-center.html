@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>模板中心 — FillForm</title>
+  <link rel="stylesheet" href="template-center.css" />
+</head>
+<body>
+<div class="tc-layout">
+
+  <!-- 顶部导航 -->
+  <header class="tc-header">
+    <div class="tc-brand">FillForm</div>
+    <nav class="tc-tabs">
+      <button class="tc-tab active" data-tab="page">页面模板</button>
+      <button class="tc-tab" data-tab="api">API 流程模板</button>
+    </nav>
+    <div class="tc-header-actions">
+      <button class="btn btn-ghost btn-sm" id="backToOptions">← 返回设置</button>
+    </div>
+  </header>
+
+  <!-- 页面模板 Tab -->
+  <main class="tc-body">
+    <section class="tc-section active" id="tab-page">
+      <div class="tc-stats">
+        <div class="tc-stat">
+          <div class="tc-stat-label">页面模板</div>
+          <div class="tc-stat-value" id="pageTemplateCount">0</div>
+        </div>
+        <div class="tc-stat">
+          <div class="tc-stat-label">字段映射总数</div>
+          <div class="tc-stat-value" id="totalFieldCount">0</div>
+        </div>
+        <div class="tc-stat">
+          <div class="tc-stat-label">覆盖域名</div>
+          <div class="tc-stat-value" id="domainCount">0</div>
+        </div>
+      </div>
+
+      <div class="tc-section-header">
+        <h2>页面模板</h2>
+        <button class="btn btn-ghost btn-sm" id="refreshPageTemplates">↺ 刷新</button>
+      </div>
+
+      <div id="pageTemplateEmpty" class="tc-empty" style="display:none">
+        <div class="tc-empty-icon">📋</div>
+        <div>暂无页面模板</div>
+        <div style="font-size:12px;margin-top:6px;color:#9aa5a0">在悬浮面板识别字段后点击「保存为模板」即可创建</div>
+      </div>
+      <div class="tc-template-list" id="pageTemplateList"></div>
+    </section>
+
+    <!-- API 流程模板 Tab -->
+    <section class="tc-section" id="tab-api">
+      <div class="tc-section-header">
+        <h2>API 流程模板（极简）</h2>
+        <div class="tc-card-label">贴 curl → 选字段是否 mock → 手动关联变量并保存模板</div>
+      </div>
+
+      <div class="tc-card">
+        <div class="tc-card-label">1) 新增接口（只贴 curl）</div>
+        <div class="api-form-grid">
+          <div>
+            <label class="api-label">接口名称</label>
+            <input id="flowEndpointName" class="tc-input" type="text" placeholder="例如：获取验证码 / 企业注册" />
+          </div>
+          <div>
+            <label class="api-label">curl 内容</label>
+            <textarea id="flowCurlInput" class="tc-code" rows="7" placeholder="粘贴 curl 命令"></textarea>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary btn-sm" id="flowParseSaveBtn" type="button">解析并保存接口</button>
+            <button class="btn btn-ghost btn-sm" id="flowClearCurlBtn" type="button">清空输入</button>
+            <button class="btn btn-ghost btn-sm" id="flowImportPresetBtn" type="button">导入注册预置模板</button>
+            <span id="flowParseStatus" class="api-muted"></span>
+          </div>
+        </div>
+        <div id="flowEndpointList" class="api-list"></div>
+      </div>
+
+      <div class="tc-card" style="margin-top:14px">
+        <div class="tc-card-label">2) 创建流程模板</div>
+        <div class="api-form-grid">
+          <div>
+            <label class="api-label">模板名称</label>
+            <input id="flowTemplateName" class="tc-input" type="text" placeholder="例如：企业注册流程" />
+          </div>
+          <div class="btn-row">
+            <select id="flowAddStepSelect" class="tc-input api-select"></select>
+            <button id="flowAddStepBtn" class="btn btn-ghost btn-sm" type="button">添加步骤</button>
+            <button id="flowNewTemplateBtn" class="btn btn-ghost btn-sm" type="button">新建模板</button>
+          </div>
+          <div id="flowStepList" class="api-step-list"></div>
+          <div class="btn-row">
+            <button id="flowSaveTemplateBtn" class="btn btn-primary btn-sm" type="button">保存模板</button>
+            <select id="flowTemplateSelect" class="tc-input api-select"></select>
+            <button id="flowLoadTemplateBtn" class="btn btn-ghost btn-sm" type="button">加载模板</button>
+            <button id="flowDeleteTemplateBtn" class="btn btn-danger btn-sm" type="button">删除模板</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tc-card" style="margin-top:14px">
+        <div class="tc-card-label">3) 执行模板（循环）</div>
+        <div class="api-form-grid">
+          <div class="api-run-grid">
+            <div>
+              <label class="api-label">执行模板</label>
+              <select id="flowRunTemplateSelect" class="tc-input api-select"></select>
+            </div>
+            <div>
+              <label class="api-label">循环次数</label>
+              <input id="flowRunCount" class="tc-input" type="number" value="1" min="1" />
+            </div>
+            <div>
+              <label class="api-label">间隔(ms)</label>
+              <input id="flowRunInterval" class="tc-input" type="number" value="300" min="0" />
+            </div>
+            <div>
+              <label class="api-label">失败重试次数（每步骤）</label>
+              <input id="flowRunRetry" class="tc-input" type="number" value="0" min="0" />
+            </div>
+          </div>
+          <div class="btn-row">
+            <button id="flowRunBtn" class="btn btn-primary btn-sm" type="button">开始执行</button>
+            <button id="flowStopBtn" class="btn btn-ghost btn-sm" type="button">停止执行</button>
+            <button id="flowRefreshBtn" class="btn btn-ghost btn-sm" type="button">刷新列表</button>
+            <span id="flowRunStatus" class="api-muted">等待执行…</span>
+          </div>
+          <pre id="flowRunLog" class="flow-log">等待执行…</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module" src="template-center.js"></script>
+</body>
+</html>

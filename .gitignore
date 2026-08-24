@@ -8,6 +8,11 @@ dist/
 .env.*
 !.env.example
 
+# Keep only the production Chrome snapshot under version control.
+extension/*
+!extension/chrome-mv3/
+!extension/chrome-mv3/**
+
 # Local test artifacts and browser profiles
 .tmp/
 .tmp-formpilot-chrome-profile*/
