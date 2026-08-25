@@ -1516,40 +1516,81 @@
 
   function readSelectLikeDisplayText(triggerEl) {
     if (!(triggerEl instanceof Element)) return '';
-    const values = [];
-    const push = (val) => {
+    const displayRoot = triggerEl.closest(
+      '.arco-select-view, .arco-select-view-single, .ant-select-selector, .ant-select, .el-select, .semi-select, .n-base-selection'
+    ) || triggerEl;
+    const selectedValues = [];
+    const fallbackValues = [];
+    const push = (bucket, val) => {
       const text = normText(val);
-      if (text) values.push(text);
+      if (text && !bucket.includes(text)) bucket.push(text);
     };
 
-    push(triggerEl.getAttribute('aria-label') || '');
-    push(triggerEl.getAttribute('title') || '');
-    push(triggerEl.textContent || '');
-
-    if (triggerEl instanceof HTMLInputElement || triggerEl instanceof HTMLTextAreaElement || triggerEl instanceof HTMLSelectElement) {
-      push(triggerEl.value || '');
+    if (triggerEl instanceof HTMLSelectElement) {
+      push(selectedValues, triggerEl.options?.[triggerEl.selectedIndex]?.textContent || '');
+      push(selectedValues, triggerEl.value || '');
+    } else if (triggerEl instanceof HTMLInputElement || triggerEl instanceof HTMLTextAreaElement) {
+      const classText = String(triggerEl.getAttribute('class') || '').toLowerCase();
+      const searchLike =
+        triggerEl.getAttribute('type') === 'search' ||
+        triggerEl.hasAttribute('aria-autocomplete') ||
+        /search|filter/.test(classText);
+      const readonlyLike =
+        triggerEl.hasAttribute('readonly') ||
+        String(triggerEl.getAttribute('aria-readonly') || '').toLowerCase() === 'true';
+      if (!searchLike || readonlyLike) push(selectedValues, triggerEl.value || '');
+    }
+    push(selectedValues, triggerEl.getAttribute('data-value') || '');
+    push(selectedValues, triggerEl.getAttribute('data-selected-value') || '');
+    if (displayRoot !== triggerEl) {
+      push(selectedValues, displayRoot.getAttribute('data-value') || '');
+      push(selectedValues, displayRoot.getAttribute('data-selected-value') || '');
     }
 
-    const nestedInputs = triggerEl.querySelectorAll?.('input, textarea, select') || [];
-    nestedInputs.forEach((node) => {
-      if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) {
-        push(node.value || '');
-      }
-    });
-
-    const labels = triggerEl.querySelectorAll?.(
-      '.arco-select-view-value, .arco-select-view-input, .ant-select-selection-item, .el-select__selected-item, .semi-select-selection-text, .n-base-selection-label, [data-slot=\"select-value\"], [class*=\"select-value\"], [class*=\"selected\"]'
+    const labels = displayRoot.querySelectorAll?.(
+      '.arco-select-view-value, .ant-select-selection-item, .el-select__selected-item, .semi-select-selection-text, .n-base-selection-label, [data-slot=\"select-value\"], [class*=\"select-value\"], [class*=\"selected\"]'
     ) || [];
     labels.forEach((node) => {
-      push(node.textContent || '');
-      push(node.getAttribute?.('title') || '');
+      push(selectedValues, node.textContent || '');
+      push(selectedValues, node.getAttribute?.('data-value') || '');
       if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) {
-        push(node.value || '');
+        push(selectedValues, node.value || '');
       }
     });
 
-    const filtered = values.filter((item) => !/▾|▼|▲|▽|△/.test(item));
-    return normText(filtered[0] || values[0] || '');
+    const nestedInputs = displayRoot.querySelectorAll?.('input, textarea, select') || [];
+    nestedInputs.forEach((node) => {
+      if (node instanceof HTMLSelectElement) {
+        push(selectedValues, node.options?.[node.selectedIndex]?.textContent || '');
+        push(selectedValues, node.value || '');
+      } else if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
+        const classText = String(node.getAttribute('class') || '').toLowerCase();
+        const searchLike =
+          node.getAttribute('type') === 'search' ||
+          node.hasAttribute('aria-autocomplete') ||
+          /search|filter/.test(classText);
+        const stateLike =
+          node.hasAttribute('readonly') ||
+          String(node.getAttribute('aria-readonly') || '').toLowerCase() === 'true' ||
+          node.getAttribute('type') === 'hidden';
+        if (!searchLike && stateLike) push(selectedValues, node.value || '');
+      }
+    });
+
+    push(fallbackValues, displayRoot.textContent || triggerEl.textContent || '');
+
+    const clean = (values) => values
+      .map((item) => normText(String(item || '').replace(/[▾▼▲▽△]/g, ' ')))
+      .filter(Boolean);
+    const selected = clean(selectedValues);
+    const fallback = clean(fallbackValues);
+    return normText(
+      selected.find((item) => !isPlaceholderDisplayText(item)) ||
+      fallback.find((item) => !isPlaceholderDisplayText(item)) ||
+      selected[0] ||
+      fallback[0] ||
+      ''
+    );
   }
 
   function isMultiSelectField(field = null, triggerEl = null) {
@@ -3904,9 +3945,6 @@
       if (panelResult?.ok) {
         return buildFillResult(true, panelResult.reason || '时间控件已选择', { target });
       }
-      if (setButtonDisplayText(target, normalizedTime)) {
-        return buildFillResult(true, '时间控件已写入展示值', { target });
-      }
       return buildFillResult(false, panelResult?.reason || '时间控件选择失败', { target });
     }
     const collectType = normalizeDateCollectType(field);
@@ -4168,10 +4206,6 @@
             return buildFillResult(true, '级联控件静态兜底写入展示路径', { target: triggerNode });
           }
         }
-        const displayText = normText(textValue) || normText(field.options?.[0]?.label || field.options?.[0]?.text || field.options?.[0]?.value || '');
-        if (displayText && setButtonDisplayText(triggerNode, displayText)) {
-          return buildFillResult(true, '按钮式下拉已写入展示值', { target: triggerNode });
-        }
       }
       return buildFillResult(selectResult.ok, selectResult.reason, { target: triggerNode });
     }
@@ -4365,7 +4399,7 @@
     const tag = (el.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return normText(el.value || '');
     if (el.isContentEditable) return normText(el.textContent || '');
-    if (tag === 'button' || getComputedStyle(el).cursor === 'pointer') return normText(el.textContent || el.getAttribute('aria-label') || '');
+    if (tag === 'button' || getComputedStyle(el).cursor === 'pointer') return normText(el.textContent || '');
     return '';
   }
 

@@ -1,5 +1,5 @@
 (function initFormPilotV2Scan() {
-  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-21-lingxi-legacy-01';
+  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-25-time-select-01';
   if (window.FormPilotV2Scan?.__build === FORM_PILOT_V2_SCAN_BUILD) return;
 
   const EID_ATTR = 'data-formpilot-v2-eid';
@@ -11,6 +11,16 @@
 
   const ID_DOCUMENT_HINT_RE = /(身份证|身份證|身份証|身分證|身分証|证件|證件|護照|护照|id\s*card|idcard|identity\s*(document|card)|identification|passport|document\s*(number|no\.?))/i;
   const BANK_CARD_HINT_RE = /(银行卡|銀行卡|银行卡号|銀行卡號|银行账号|銀行賬號|银行账户|銀行賬戶|储蓄卡|儲蓄卡|借记卡|借記卡|debit\s*card|bank\s*(card|account|acct)|card\s*(number|no\.?))/i;
+  const DATE_HINT_RE = /(?:日期|時間|时间|生日|出生日期|(?:^|[^A-Za-z])(?:birth\s*date|date\s*of\s*birth|dob|datetime|date|time)(?=$|[^A-Za-z]))/i;
+  const DATE_PICKER_CLASS_RE = /(?:^|[^A-Za-z])(?:datetime|date|time)[-_]?picker(?=$|[^A-Za-z])/i;
+
+  function isDateHintText(text = '') {
+    return DATE_HINT_RE.test(String(text || ''));
+  }
+
+  function isDatePickerClassText(text = '') {
+    return DATE_PICKER_CLASS_RE.test(String(text || ''));
+  }
 
   function isBankCardHintText(text = '') {
     const hint = String(text || '');
@@ -471,7 +481,7 @@
       inputMode === 'decimal' ||
       inputMode === 'tel' ||
       !!pattern && /\\d|\[0-9]/.test(pattern);
-    const dateLike = type === 'date' || /日期|date|时间|time|成立/.test(String(hintText || ''));
+    const dateLike = type === 'date' || isDateHintText(hintText);
     const required =
       el.hasAttribute('required') ||
       String(el.getAttribute('aria-required') || '').toLowerCase() === 'true';
@@ -941,8 +951,10 @@
     if (type === 'file') return 'file';
     if (type === 'radio' || role === 'radiogroup' || role === 'radio') return 'radioGroup';
     if (type === 'checkbox' || role === 'checkbox') return 'checkboxGroup';
+    if (tag === 'select') return 'select';
+    if (tag === 'input' && readonlyLike && isDatePickerClassText(classHint)) return 'date';
     if (tag === 'input' && readonlyLike && /(请选|請選|选择|選擇|select)/i.test(placeholder) && /select|dropdown|picker|cascader|arco-select|ant-select|semi-select|el-select|n-base-select/.test(classHint)) return 'select';
-    if (tag === 'select' || role === 'combobox') return 'select';
+    if (role === 'combobox') return 'select';
     if (
       type === 'number' ||
       role === 'spinbutton' ||
@@ -953,7 +965,7 @@
       el.hasAttribute('aria-valuemax') ||
       /input-number|number-input|arco-input-number|ant-input-number/.test(classHint)
     ) return 'number';
-    if (type === 'date' || /日期|時間|时间|生日|出生日期|出生日期|birth\s*date|date\s*of\s*birth|\bdob\b|date|time/.test(directHint)) return 'date';
+    if (type === 'date' || isDateHintText(directHint)) return 'date';
     if (/邮箱|郵箱|電郵|电子邮件|電子郵件|电邮|e-?mail|mail\s*address/i.test(directHint)) return 'email';
     if (/身份证|身份證|身份証|身分證|身分証|证件|證件|護照|护照|id\s*card|idcard|identity\s*(document|card)|identification|passport|document\s*(number|no\.?)/i.test(directHint)) return 'idcard';
     if (/固定电话|固定電話|住宅電話|办公电话|辦公電話|固話|固话|landline|telephone|tel/i.test(directHint)) return 'tel';
@@ -962,7 +974,7 @@
     if (/地址|通訊地址|通讯地址|聯絡地址|联系地址|住址|居住地址|郵寄地址|邮寄地址|省份|城市|区县|區縣|地區|地区|区域|區域|address|mailing\s*address|residential\s*address|home\s*address|contact\s*address|street|road|district|region|area|city|state|province|街號|街号|街名|门牌|門牌|楼|樓|building|tower|block|flat|unit|room|室|floor|层|層/i.test(directHint)) return 'addressDetail';
     if (/邮箱|郵箱|電郵|电子邮件|電子郵件|电邮|e-?mail|mail\s*address/i.test(contextHint)) return 'email';
     if (/身份证|身份證|身份証|身分證|身分証|证件|證件|護照|护照|id\s*card|idcard|identity\s*(document|card)|identification|passport|document\s*(number|no\.?)/i.test(contextHint)) return 'idcard';
-    if (/日期|時間|时间|生日|出生日期|出生日期|birth\s*date|date\s*of\s*birth|\bdob\b|date|time/.test(contextHint)) return 'date';
+    if (isDateHintText(contextHint)) return 'date';
     if (isBankCardHintText(contextHint)) return 'bankCard';
     if (/(公司|企業|企业|機構|机构|組織|组织|單位|单位|雇主|政府|government|organization|organisation|company|entity|agency|employer|corp|corporation).*(名稱|名称|name)|cert.*name|company\s*name|organization\s*name|organisation\s*name|legal\s*entity\s*name|enterprise\s*name/i.test(contextHint)) return 'companyName';
     if (/(统一社会信用代码|統一社會信用代碼|社会信用代码|社會信用代碼|信用代码|信用代碼|统一信用代码|統一信用代碼|納税人識別號|纳税人识别号|商業登記(?:證)?號(?:碼)?|商业登记(?:证)?号(?:码)?|商業登記|商业登记|商業登記證|商业登记证|unified social credit(?: code| identifier)?|social credit code|taxpayer identification(?: number)?|tax id|brn|business registration(?: number| no\.?| #)?|registration number|company registration(?: number| no\.?)|證照編號|证照编号)/i.test(contextHint)) return 'companyId';
@@ -1368,8 +1380,8 @@
     if (tag === 'input' && type === 'date') return true;
     if (tag !== 'button' && role !== 'button') return false;
     const hint = `${label} ${getCustomRendererPlaceholder(el)} ${el.textContent || ''} ${getAttrText(el, 'class')}`;
-    if (FIELD_ACTION_HINT_RE.test(hint) && !/(日期|時間|时间|生日|出生|date|birth|dob)/i.test(hint)) return false;
-    return /(日期|時間|时间|生日|出生|date|birth\s*date|date\s*of\s*birth|\bdob\b)/i.test(hint);
+    if (FIELD_ACTION_HINT_RE.test(hint) && !isDateHintText(hint)) return false;
+    return isDateHintText(hint);
   }
 
   function isCustomRendererSignatureLike(row, label = '') {
@@ -2692,7 +2704,8 @@
         el.hasAttribute('readonly') ||
         getAttrText(el, 'aria-readonly').toLowerCase() === 'true' ||
         getAttrText(el, 'readonly') !== '';
-      const pickerLike = tag === 'input' && readonlyLike && /datetimepicker|datepicker|timepicker/.test(classText);
+      const pickerClassText = `${classText} ${getAttrText(el.parentElement, 'class').toLowerCase()}`;
+      const pickerLike = tag === 'input' && readonlyLike && isDatePickerClassText(pickerClassText);
 
       if (!isFileInput && !visible(el)) continue;
 
@@ -2712,7 +2725,8 @@
       if (segmentCandidate) continue;
 
       let kind = classifyField(el, label, placeholder, context);
-      if (selectTrigger.selectLike && !pickerLike) kind = 'select';
+      if (pickerLike) kind = 'date';
+      else if (selectTrigger.selectLike) kind = 'select';
       const options = kind === 'select' ? collectSelectOptions(el) : [];
       const reasons = [];
       if (label) pushReason(reasons, '命中标签文本');
@@ -2779,6 +2793,7 @@
           stableContainerSelector: basicContainerCandidates[0] || basicContainerSelector || '',
           inputDomId: ensureDomId(el),
           locatorDomId: ensureDomId(locatorEl),
+          pickerLike,
           selectLike: selectTrigger.selectLike,
           selectTriggerReason: selectTrigger.reason || '',
           segmentCandidate,
@@ -2868,6 +2883,9 @@
     ...(window.FormPilotV2Utils || {}),
     EID_ATTR,
     normText,
+    isDateHintText,
+    isDatePickerClassText,
+    classifyField,
     visible,
     ensureDomId,
     findContainer,

@@ -25,6 +25,7 @@ const EDITOR_CONTROL_HINT_RE = /(加粗|粗体|斜体|下划线|删除线|字号
 const ADDRESS_HIERARCHY_HINT_RE = /(省份|省.{0,8}城市|城市.{0,8}(区县|區縣|地区|地區|区域|區域)|province.{0,16}city|city.{0,16}(district|region|area|county)|district|region|area|区县|區縣|地區|地区|區域|区域)/i;
 const ID_DOCUMENT_HINT_RE = /(身份证|身份證|身份証|身分證|身分証|证件|證件|護照|护照|id\s*card|idcard|identity\s*(document|card)|identification|passport|document\s*(number|no\.?))/i;
 const BANK_CARD_HINT_RE = /(银行卡|銀行卡|银行卡号|銀行卡號|银行账号|銀行賬號|银行账户|銀行賬戶|储蓄卡|儲蓄卡|借记卡|借記卡|debit\s*card|bank\s*(card|account|acct)|card\s*(number|no\.?))/i;
+const DATE_HINT_RE = /(?:日期|時間|时间|生日|出生日期|(?:^|[^A-Za-z])(?:birth\s*date|date\s*of\s*birth|dob|datetime|date|time)(?=$|[^A-Za-z]))/i;
 
 function isBankCardHint(hint = '') {
   const text = String(hint || '');
@@ -44,6 +45,19 @@ function isLikelyEditorControl(field) {
   return EDITOR_CONTROL_HINT_RE.test(hint);
 }
 
+function hasStructuredDateEvidence(field) {
+  if (field?.kind !== FIELD_KINDS.DATE) return false;
+  const inputType = normalizeText(field?.constraints?.inputType || '').toLowerCase();
+  const widget = normalizeText(field?.meta?.widget || field?.meta?.componentType || '').toLowerCase();
+  return (
+    field?.constraints?.dateLike === true ||
+    /^(date|time|datetime-local|month)$/.test(inputType) ||
+    field?.meta?.pickerLike === true ||
+    field?.meta?.customDateButton === true ||
+    /(date|time)picker|datetime/.test(widget)
+  );
+}
+
 function detectKindFromHint(field) {
   const hint = `${field.label || ''} ${field.placeholder || ''} ${field.context || ''}`;
   const shortLabel = normalizeText(field.label || '');
@@ -53,6 +67,7 @@ function detectKindFromHint(field) {
   if (Array.isArray(field.meta?.comboboxDomIds) && field.meta.comboboxDomIds.length >= 2 && field.meta?.detailDomId) {
     return FIELD_KINDS.ADDRESS_COMPONENT;
   }
+  if (hasStructuredDateEvidence(field)) return FIELD_KINDS.DATE;
   if (field.meta?.selectLike) return FIELD_KINDS.SELECT;
   if (shortLabel === '姓' || shortPlaceholder === '姓' || shortLabel === '姓氏' || shortPlaceholder === '姓氏') return FIELD_KINDS.LAST_NAME;
   if (shortLabel === '名' || shortPlaceholder === '名' || shortLabel === '名字' || shortPlaceholder === '名字') return FIELD_KINDS.FIRST_NAME;
@@ -69,7 +84,7 @@ function detectKindFromHint(field) {
   if (/固定电话|固定電話|住宅電話|办公电话|辦公電話|固話|固话|landline|telephone|tel/i.test(hint)) return FIELD_KINDS.TEL;
   if (/电话|電話|手机|手機|手机号|手機號|手提電話|流動電話|移动电话|聯絡電話|联络电话|聯繫電話|联系电话|mobile|phone|contact\s*(number|phone)|phone\s*number/i.test(hint)) return FIELD_KINDS.PHONE;
   if (/姓名|中文姓名|英文姓名|全名|申請人|申请人|聯絡人|联系人|name|full\s*name|contact\s*person|applicant/i.test(hint)) return FIELD_KINDS.FULL_NAME;
-  if (/日期|時間|时间|生日|出生日期|birth\s*date|date\s*of\s*birth|\bdob\b|date|time/.test(hint)) return FIELD_KINDS.DATE;
+  if (DATE_HINT_RE.test(hint)) return FIELD_KINDS.DATE;
   if (/地址|通訊地址|通讯地址|聯絡地址|联系地址|住址|居住地址|郵寄地址|邮寄地址|省份|城市|区县|區縣|地區|地区|区域|區域|address|mailing\s*address|residential\s*address|home\s*address|contact\s*address|street|road|district|region|area|city|state|province|街號|街号|街名|门牌|門牌|室|房|樓|楼|大廈|大厦|building|tower|block|flat|unit|room|floor|street\s*no|street\s*name/i.test(hint)) return FIELD_KINDS.ADDRESS_DETAIL;
   if (/请选择|請選擇|选择|選擇|下拉|選項|选项|combobox|dropdown|select|choose/i.test(hint)) return FIELD_KINDS.SELECT;
 
@@ -220,6 +235,7 @@ function correctField(field) {
   const hasChoiceOptions = Array.isArray(corrected.options) && corrected.options.length > 0;
   const preserveStructuralKind =
     corrected.kind === FIELD_KINDS.ADDRESS_COMPONENT ||
+    hasStructuredDateEvidence(corrected) ||
     (
       (corrected.kind === FIELD_KINDS.RADIO_GROUP || corrected.kind === FIELD_KINDS.CHECKBOX_GROUP) &&
       (hasChoiceOptions || corrected.meta?.componentGroup || corrected.meta?.questionLike)

@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build && node scripts/sync-extension.mjs",
+    "check:detect": "node scripts/check-detect-engine.mjs",
     "check:hashids": "node scripts/check-hashids-crypto.mjs",
     "zip": "wxt zip",
     "postinstall": "wxt prepare"

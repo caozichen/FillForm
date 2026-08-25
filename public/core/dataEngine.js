@@ -34,6 +34,7 @@ const EN_COMPANY_SUFFIXES = ['Technologies', 'Holdings', 'Solutions', 'Systems',
 const GOV_DEPARTMENTS = ['市场监督管理局', '工业和信息化局', '人力资源和社会保障局', '商务局', '民政局'];
 const ID_DOCUMENT_HINT_RE = /(身份证|身份證|身份証|身分證|身分証|证件|證件|護照|护照|id\s*card|idcard|identity\s*(document|card)|identification|passport|document\s*(number|no\.?))/i;
 const BANK_CARD_HINT_RE = /(银行卡|銀行卡|银行卡号|銀行卡號|银行账号|銀行賬號|银行账户|銀行賬戶|储蓄卡|儲蓄卡|借记卡|借記卡|debit\s*card|bank\s*(card|account|acct)|card\s*(number|no\.?))/i;
+const DATE_HINT_RE = /(?:日期|時間|时间|生日|出生日期|(?:^|[^A-Za-z])(?:birth\s*date|date\s*of\s*birth|dob|datetime|date|time)(?=$|[^A-Za-z]))/i;
 const SOCIAL_CREDIT_HINT_RE = /(统一社会信用代码|統一社會信用代碼|社会信用代码|社會信用代碼|信用代码|信用代碼|统一信用代码|統一信用代碼|unified social credit(?: code| identifier)?|social credit code)/i;
 const HK_COMPANY_ID_HINT_RE = /(香港|hong\s*kong|\bhk\b|商業登記(?:證)?號(?:碼)?|商业登记(?:证)?号(?:码)?|商業登記|商业登记|商業登記證|商业登记证|\bbrn\b|business registration(?: number| no\.?| #)?)/i;
 const CN_JOB_TITLES = ['产品经理', '销售主管', '测试经理', '解决方案架构师', '交互设计师', '机器学习工程师'];
@@ -1380,7 +1381,7 @@ export function generateValueForField(field, settings = {}) {
   if (/证件|證件|身份证|身份證|身份証|身分證|身分証|identity\s*(document|card)|identification|document\s*(number|no\.?)/i.test(hint)) return buildIdcard();
   if (/地址|通訊地址|通讯地址|聯絡地址|联系地址|住址|居住地址|郵寄地址|邮寄地址|address|street|road|district|region|area|province|city|state|省|市|区|區|樓|楼|室|街|區域|地區/.test(hint)) return pickConfiguredValue(settings, 'address') || buildAddressByHint(hint);
   if (field.kind === FIELD_KINDS.SELECT || /请选择|請選擇|选择|選擇|下拉|選項|选项|combobox|dropdown|select|choose/i.test(hint)) return chooseSelectValue(field);
-  if (/日期|時間|时间|生日|出生日期|birth\s*date|date\s*of\s*birth|\bdob\b|date|time/i.test(hint)) {
+  if (DATE_HINT_RE.test(hint)) {
     if (timeOnly) return buildTimeValue(field);
     const value = pickConfiguredValue(settings, 'date');
     if (value) return normalizeDateToHalfYearWindow(value);
