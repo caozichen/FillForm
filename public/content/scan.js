@@ -1,5 +1,5 @@
 (function initFormPilotV2Scan() {
-  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-25-time-select-01';
+  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-26-temporal-mode-01';
   if (window.FormPilotV2Scan?.__build === FORM_PILOT_V2_SCAN_BUILD) return;
 
   const EID_ATTR = 'data-formpilot-v2-eid';
@@ -13,6 +13,11 @@
   const BANK_CARD_HINT_RE = /(银行卡|銀行卡|银行卡号|銀行卡號|银行账号|銀行賬號|银行账户|銀行賬戶|储蓄卡|儲蓄卡|借记卡|借記卡|debit\s*card|bank\s*(card|account|acct)|card\s*(number|no\.?))/i;
   const DATE_HINT_RE = /(?:日期|時間|时间|生日|出生日期|(?:^|[^A-Za-z])(?:birth\s*date|date\s*of\s*birth|dob|datetime|date|time)(?=$|[^A-Za-z]))/i;
   const DATE_PICKER_CLASS_RE = /(?:^|[^A-Za-z])(?:datetime|date|time)[-_]?picker(?=$|[^A-Za-z])/i;
+  const TIME_HINT_RE = /(?:時間|时间|時\s*[:：]\s*分|时\s*[:：]\s*分|(?:^|[^A-Za-z])time(?=$|[^A-Za-z]))/i;
+  const DATE_ONLY_HINT_RE = /(?:日期|生日|出生|成立|設立|设立|(?:^|[^A-Za-z])(?:date|calendar|birthday|birth\s*date|date\s*of\s*birth|dob)(?=$|[^A-Za-z]))/i;
+  const DATETIME_PICKER_STRUCTURE_RE = /datetime(?:[-_]?picker|-local)?|date[-_]?time/i;
+  const TIME_PICKER_STRUCTURE_RE = /time[-_]?picker|picker[-_]?time|lucide[-_]?clock|(?:^|[\s_-])clock(?:[\s_\d-]|$)|data-column\s*=\s*["']?(?:hour|minute)/i;
+  const DATE_PICKER_STRUCTURE_RE = /date[-_]?picker|picker[-_]?date|lucide[-_]?(?:calendar|cake)|(?:^|[\s_-])calendar(?:[\s_\d-]|$)/i;
 
   function isDateHintText(text = '') {
     return DATE_HINT_RE.test(String(text || ''));
@@ -20,6 +25,62 @@
 
   function isDatePickerClassText(text = '') {
     return DATE_PICKER_CLASS_RE.test(String(text || ''));
+  }
+
+  function readTemporalAttribute(el, name) {
+    try {
+      return String(el?.getAttribute?.(name) || '');
+    } catch {
+      return '';
+    }
+  }
+
+  function collectTemporalStructureHint(el) {
+    if (!el || typeof el.getAttribute !== 'function') return '';
+    const nodes = [el, el.parentElement].filter(Boolean);
+    try {
+      nodes.push(...Array.from(el.querySelectorAll?.('svg, [data-icon], [class*="clock"], [class*="calendar"]') || []));
+    } catch {
+      // ignore malformed third-party DOM implementations
+    }
+    return nodes.map((node) => [
+      readTemporalAttribute(node, 'class'),
+      readTemporalAttribute(node, 'id'),
+      readTemporalAttribute(node, 'name'),
+      readTemporalAttribute(node, 'type'),
+      readTemporalAttribute(node, 'data-picker'),
+      readTemporalAttribute(node, 'data-type'),
+      readTemporalAttribute(node, 'data-testid'),
+      readTemporalAttribute(node, 'data-icon'),
+      readTemporalAttribute(node, 'data-column')
+    ].join(' ')).join(' ');
+  }
+
+  function inferDatePickerMode(el, fieldHint = '') {
+    if (!el || typeof el.getAttribute !== 'function') return '';
+    const inputType = readTemporalAttribute(el, 'type').toLowerCase();
+    if (inputType === 'datetime-local') return 'datetime';
+    if (inputType === 'time') return 'time';
+    if (inputType === 'date' || inputType === 'month') return 'date';
+
+    const structureHint = collectTemporalStructureHint(el);
+    if (DATETIME_PICKER_STRUCTURE_RE.test(structureHint)) return 'datetime';
+    if (TIME_PICKER_STRUCTURE_RE.test(structureHint)) return 'time';
+    if (DATE_PICKER_STRUCTURE_RE.test(structureHint)) return 'date';
+
+    const directHint = [
+      fieldHint,
+      readTemporalAttribute(el, 'placeholder'),
+      readTemporalAttribute(el, 'aria-placeholder'),
+      readTemporalAttribute(el, 'aria-label'),
+      readTemporalAttribute(el, 'title'),
+      el.textContent || ''
+    ].join(' ');
+    const hasTime = TIME_HINT_RE.test(directHint);
+    const hasDate = DATE_ONLY_HINT_RE.test(directHint);
+    if (hasTime && !hasDate) return 'time';
+    if (hasDate) return 'date';
+    return hasTime ? 'time' : '';
   }
 
   function isBankCardHintText(text = '') {
@@ -1377,11 +1438,12 @@
     const type = String(el.getAttribute('type') || '').toLowerCase();
     const role = getAttrText(el, 'role').toLowerCase();
     if (role === 'combobox' || role === 'radio' || role === 'checkbox') return false;
-    if (tag === 'input' && type === 'date') return true;
+    if (tag === 'input' && ['date', 'time', 'month', 'datetime-local'].includes(type)) return true;
     if (tag !== 'button' && role !== 'button') return false;
     const hint = `${label} ${getCustomRendererPlaceholder(el)} ${el.textContent || ''} ${getAttrText(el, 'class')}`;
-    if (FIELD_ACTION_HINT_RE.test(hint) && !isDateHintText(hint)) return false;
-    return isDateHintText(hint);
+    const pickerMode = inferDatePickerMode(el, label);
+    if (FIELD_ACTION_HINT_RE.test(hint) && !pickerMode) return false;
+    return !!pickerMode;
   }
 
   function isCustomRendererSignatureLike(row, label = '') {
@@ -1717,7 +1779,9 @@
         required: inferRequiredFromContext(fieldContainer, hint),
         enumOptions,
         dateLike: kind === 'date' || undefined,
-        inputType: kind === 'date' ? 'date' : undefined,
+        inputType: kind === 'date'
+          ? (extraMeta.datePickerMode === 'time' ? 'time' : (extraMeta.datePickerMode === 'datetime' ? 'datetime-local' : 'date'))
+          : undefined,
         questionLike: ['radioGroup', 'checkboxGroup'].includes(kind) || undefined
       }
     );
@@ -2019,10 +2083,11 @@
         continue;
       }
 
-      const dateTriggers = Array.from(row.querySelectorAll('input[type="date"], button, [role="button"]'))
+      const dateTriggers = Array.from(row.querySelectorAll('input[type="date"], input[type="time"], input[type="month"], input[type="datetime-local"], button, [role="button"]'))
         .filter((node) => isCustomRendererDateTrigger(node, label));
       if (dateTriggers.length) {
         const trigger = dateTriggers[0];
+        const datePickerMode = inferDatePickerMode(trigger, label) || 'date';
         markCustomRendererNodes(skipNodes, row);
         fields.push(buildCustomRendererField({
           row,
@@ -2030,7 +2095,11 @@
           kind: 'date',
           label,
           placeholder: getCustomRendererPlaceholder(trigger),
-          extraMeta: { customDateButton: (trigger.tagName || '').toLowerCase() === 'button' }
+          extraMeta: {
+            customDateButton: (trigger.tagName || '').toLowerCase() === 'button',
+            datePickerMode,
+            timeOnly: datePickerMode === 'time'
+          }
         }));
         continue;
       }
@@ -2885,6 +2954,7 @@
     normText,
     isDateHintText,
     isDatePickerClassText,
+    inferDatePickerMode,
     classifyField,
     visible,
     ensureDomId,

@@ -37,6 +37,68 @@ const fixtures = [
     meta: { pickerLike: true, selectLike: true, locatorStability: 1 }
   },
   {
+    id: 'conflicting-time-description',
+    kind: 'date',
+    label: '[75e]請補充放學時間（星期六、日及公眾假期）',
+    placeholder: '請選擇放學時間',
+    context: '[75e]請補充放學時間 日期格式為時:分，選擇表明為幾時幾分',
+    selector: '#conflicting-time-description',
+    domId: 'conflicting-time-description',
+    score: 0.92,
+    confidence: 0.92,
+    constraints: { dateLike: true, inputType: 'time' },
+    meta: { customDateButton: true, datePickerMode: 'time', timeOnly: true, locatorStability: 1 }
+  },
+  {
+    id: 'ordinary-date',
+    kind: 'date',
+    label: '活動日期',
+    placeholder: '請選擇日期',
+    context: '活動日期 日期格式為年-月-日',
+    selector: '#ordinary-date',
+    domId: 'ordinary-date',
+    score: 0.92,
+    confidence: 0.92,
+    constraints: { dateLike: true, inputType: 'date' },
+    meta: { customDateButton: true, datePickerMode: 'date', locatorStability: 1 }
+  },
+  {
+    id: 'birthday-ymd',
+    kind: 'date',
+    label: '生日',
+    context: '生日 年月日',
+    selector: '#birthday-ymd',
+    domId: 'birthday-ymd',
+    score: 0.92,
+    confidence: 0.92,
+    constraints: { dateLike: true, inputType: 'date' },
+    meta: { widget: 'birthday', birthdayComposite: true, dateCollectType: 'ymd', segmentRoles: ['year', 'month', 'day'], locatorStability: 1 }
+  },
+  {
+    id: 'birthday-ym',
+    kind: 'date',
+    label: '生日（年月）',
+    context: '生日 年月',
+    selector: '#birthday-ym',
+    domId: 'birthday-ym',
+    score: 0.92,
+    confidence: 0.92,
+    constraints: { dateLike: true, inputType: 'date' },
+    meta: { widget: 'birthday', birthdayComposite: true, dateCollectType: 'ym', segmentRoles: ['year', 'month'], locatorStability: 1 }
+  },
+  {
+    id: 'birthday-md',
+    kind: 'date',
+    label: '生日（月日）',
+    context: '生日 月日',
+    selector: '#birthday-md',
+    domId: 'birthday-md',
+    score: 0.92,
+    confidence: 0.92,
+    constraints: { dateLike: true, inputType: 'date' },
+    meta: { widget: 'birthday', birthdayComposite: true, dateCollectType: 'md', segmentRoles: ['month', 'day'], locatorStability: 1 }
+  },
+  {
     id: 'department-select',
     kind: 'select',
     label: '部門',
@@ -125,6 +187,13 @@ for (const engine of engines) {
 
   assert.equal(byId.get('traditional-time')?.kind, 'date', `${engine.name}: 繁體時間被誤判`);
   assert.equal(byId.get('readonly-time-picker')?.kind, 'date', `${engine.name}: readonly 時間被誤判`);
+  assert.equal(byId.get('conflicting-time-description')?.kind, 'date', `${engine.name}: 含日期說明的時間題被誤判`);
+  assert.equal(byId.get('conflicting-time-description')?.meta?.datePickerMode, 'time', `${engine.name}: 時間子類型在標準化後丟失`);
+  assert.equal(byId.get('conflicting-time-description')?.meta?.timeOnly, true, `${engine.name}: 純時間標記在標準化後丟失`);
+  assert.equal(byId.get('ordinary-date')?.kind, 'date', `${engine.name}: 普通日期被誤判`);
+  assert.equal(byId.get('birthday-ymd')?.kind, 'date', `${engine.name}: 年月日生日被誤判`);
+  assert.equal(byId.get('birthday-ym')?.kind, 'date', `${engine.name}: 年月生日被誤判`);
+  assert.equal(byId.get('birthday-md')?.kind, 'date', `${engine.name}: 月日生日被誤判`);
   assert.equal(byId.get('department-select')?.kind, 'select', `${engine.name}: 一般下拉被誤判`);
   assert.equal(byId.get('dynamic-department-select')?.kind, 'select', `${engine.name}: 動態下拉未被識別`);
   assert.equal(byId.get('time-format-select')?.kind, 'select', `${engine.name}: 時間格式下拉被誤判`);
@@ -142,7 +211,7 @@ for (const engine of engines) {
 globalThis.window = {};
 await import('../public/content/scan.js');
 
-const { classifyField, isDateHintText, isDatePickerClassText } = window.FormPilotV2Utils || {};
+const { classifyField, isDateHintText, isDatePickerClassText, inferDatePickerMode } = window.FormPilotV2Utils || {};
 assert.equal(typeof isDateHintText, 'function', 'scan: 日期提示词判断函数未暴露');
 assert.equal(isDateHintText('Candidate code'), false, 'scan: Candidate 被误判为日期');
 assert.equal(isDateHintText('Update notes'), false, 'scan: Update 被误判为日期');
@@ -160,7 +229,7 @@ assert.equal(isDatePickerClassText('update-picker'), false, 'scan: update-picker
 assert.equal(isDatePickerClassText('candidate-picker'), false, 'scan: candidate-picker 被误判为日期 picker');
 assert.equal(isDatePickerClassText('runtimepicker'), false, 'scan: runtimepicker 被误判为日期 picker');
 
-function createScanElement(tagName, attrs = {}, parentAttrs = {}) {
+function createScanElement(tagName, attrs = {}, parentAttrs = {}, options = {}) {
   const makeNode = (values) => ({
     getAttribute(name) {
       return Object.hasOwn(values, name) ? values[name] : null;
@@ -169,12 +238,40 @@ function createScanElement(tagName, attrs = {}, parentAttrs = {}) {
       return Object.hasOwn(values, name);
     }
   });
+  const childNodes = (options.childAttrs || []).map((values) => makeNode(values));
   return {
     ...makeNode(attrs),
     tagName: tagName.toUpperCase(),
-    parentElement: makeNode(parentAttrs)
+    textContent: options.textContent || '',
+    parentElement: makeNode(parentAttrs),
+    querySelectorAll() {
+      return childNodes;
+    }
   };
 }
+
+const conflictingTimeTrigger = createScanElement(
+  'button',
+  { type: 'button' },
+  {},
+  { textContent: '請選擇放學時間', childAttrs: [{ class: 'lucide-clock-3' }] }
+);
+const ordinaryDateTrigger = createScanElement(
+  'button',
+  { type: 'button' },
+  {},
+  { textContent: '請選擇日期', childAttrs: [{ class: 'lucide-calendar-days' }] }
+);
+assert.equal(
+  inferDatePickerMode(conflictingTimeTrigger, '[75e]請補充放學時間'),
+  'time',
+  'scan: 時間按鈕未根據時鐘結構識別'
+);
+assert.equal(
+  inferDatePickerMode(ordinaryDateTrigger, '活動日期'),
+  'date',
+  'scan: 日期按鈕未根據日曆結構識別'
+);
 
 assert.equal(
   classifyField(
@@ -213,11 +310,41 @@ const updateValue = generateValueForField(fixtures.find((field) => field.id === 
 const startDateValue = generateValueForField(fixtures.find((field) => field.id === 'start-date-token'), generatorSettings);
 const actualDateValue = generateValueForField({ kind: 'date', label: 'Date' }, generatorSettings);
 const actualTimeValue = generateValueForField({ kind: 'date', label: 'Appointment time' }, generatorSettings);
+const conflictingTimeValue = generateValueForField(fixtures.find((field) => field.id === 'conflicting-time-description'), generatorSettings);
+const ordinaryDateValue = generateValueForField(fixtures.find((field) => field.id === 'ordinary-date'), generatorSettings);
+const birthdayYmdValue = generateValueForField(fixtures.find((field) => field.id === 'birthday-ymd'), generatorSettings);
+const birthdayYmValue = generateValueForField(fixtures.find((field) => field.id === 'birthday-ym'), generatorSettings);
+const birthdayMdValue = generateValueForField(fixtures.find((field) => field.id === 'birthday-md'), generatorSettings);
 
 assert.doesNotMatch(String(candidateValue), /^\d{4}-\d{2}-\d{2}$/, 'data: Candidate 生成了日期');
 assert.doesNotMatch(String(updateValue), /^\d{4}-\d{2}-\d{2}$/, 'data: Update 生成了日期');
 assert.match(String(startDateValue), /^\d{4}-\d{2}-\d{2}$/, 'data: start_date 未生成日期');
 assert.match(String(actualDateValue), /^\d{4}-\d{2}-\d{2}$/, 'data: DATE 字段未生成日期');
 assert.match(String(actualTimeValue), /^\d{2}:\d{2}$/, 'data: TIME 字段未生成时间');
+assert.match(String(conflictingTimeValue), /^\d{2}:\d{2}$/, 'data: 含“日期格式”說明的時間題未生成時間');
+assert.match(String(ordinaryDateValue), /^\d{4}-\d{2}-\d{2}$/, 'data: 普通日期未生成日期');
+assert.match(String(birthdayYmdValue), /^\d{4}-\d{2}-\d{2}$/, 'data: 年月日生日未生成日期');
+assert.match(String(birthdayYmValue), /^\d{4}-\d{2}-\d{2}$/, 'data: 年月生日未生成日期');
+assert.match(String(birthdayMdValue), /^\d{4}-\d{2}-\d{2}$/, 'data: 月日生日未生成日期');
+
+await import('../public/content/fill.js');
+const resolveDateFieldMode = window.FormPilotV2Fill?.__test?.resolveDateFieldMode;
+const normalizeTimeText = window.FormPilotV2Fill?.__test?.normalizeTimeText;
+assert.equal(typeof resolveDateFieldMode, 'function', 'fill: 時間/日期模式判斷未暴露');
+assert.equal(normalizeTimeText('2026-03-06'), '12:30', 'fill: 日期字符串被誤解為緊湊時間');
+assert.equal(normalizeTimeText('2030'), '20:30', 'fill: 合法緊湊時間未正常解析');
+assert.equal(
+  resolveDateFieldMode(fixtures.find((field) => field.id === 'conflicting-time-description'), conflictingTimeTrigger),
+  'time',
+  'fill: 含日期說明的時間題未進入時間分支'
+);
+assert.equal(
+  resolveDateFieldMode(fixtures.find((field) => field.id === 'ordinary-date'), ordinaryDateTrigger),
+  'date',
+  'fill: 普通日期未保持日期分支'
+);
+for (const id of ['birthday-ymd', 'birthday-ym', 'birthday-md']) {
+  assert.equal(resolveDateFieldMode(fixtures.find((field) => field.id === id), null), 'birthday', `fill: ${id} 未保持生日分支`);
+}
 
 console.log(`detect regression passed: ${engines.length} engines, ${fixtures.length} fixtures, scan and data`);

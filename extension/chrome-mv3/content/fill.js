@@ -1,5 +1,5 @@
 (function initFormPilotV2Fill() {
-  const FORM_PILOT_V2_FILL_BUILD = '2026-08-21-lingxi-legacy-01';
+  const FORM_PILOT_V2_FILL_BUILD = '2026-08-26-temporal-mode-01';
   if (window.FormPilotV2Fill?.__build === FORM_PILOT_V2_FILL_BUILD) return;
 
   const utils = window.FormPilotV2Utils || {};
@@ -3686,7 +3686,7 @@
       const second = match[3] || '';
       return second ? `${hour}:${minute}:${second}` : `${hour}:${minute}`;
     }
-    const compact = text.match(/\b([01]?\d|2[0-3])([0-5]\d)([0-5]\d)?\b/);
+    const compact = text.match(/^([01]?\d|2[0-3])([0-5]\d)([0-5]\d)?$/);
     if (compact) {
       const hour = compact[1].padStart(2, '0');
       const minute = compact[2] || '00';
@@ -3694,6 +3694,39 @@
       return second ? `${hour}:${minute}:${second}` : `${hour}:${minute}`;
     }
     return '12:30';
+  }
+
+  function resolveDateFieldMode(field = {}, target = null) {
+    const meta = field?.meta || {};
+    const widget = normText(meta.widget || field?.widget || '').toLowerCase();
+    if (widget === 'birthday' || meta.birthdayComposite === true) return 'birthday';
+
+    const explicitMode = normText(meta.datePickerMode || meta.temporalKind || meta.pickerMode || '').toLowerCase();
+    if (meta.timeOnly === true || explicitMode === 'time') return 'time';
+    if (['date', 'datetime', 'birthday'].includes(explicitMode)) return explicitMode;
+
+    const inferDatePickerMode = utils.inferDatePickerMode || window.FormPilotV2Utils?.inferDatePickerMode;
+    if (typeof inferDatePickerMode === 'function' && target) {
+      const inferred = normText(inferDatePickerMode(target, `${field?.label || ''} ${field?.placeholder || ''}`)).toLowerCase();
+      if (['time', 'date', 'datetime'].includes(inferred)) return inferred;
+    }
+
+    const inputType = normText(field?.constraints?.inputType || target?.getAttribute?.('type') || '').toLowerCase();
+    if (inputType === 'time') return 'time';
+    if (inputType === 'datetime-local') return 'datetime';
+    if (inputType === 'date' || inputType === 'month') return 'date';
+
+    const primaryHint = [
+      field?.label || '',
+      field?.placeholder || '',
+      target?.getAttribute?.('placeholder') || '',
+      target?.getAttribute?.('aria-label') || '',
+      target?.getAttribute?.('title') || '',
+      target?.textContent || ''
+    ].join(' ');
+    const hasTime = /(時間|时间|時\s*[:：]\s*分|时\s*[:：]\s*分|\btime\b)/i.test(primaryHint);
+    const hasDate = /(日期|生日|出生|成立|設立|设立|birth|date\s*of\s*birth|\bdob\b|establish|setup)/i.test(primaryHint);
+    return hasTime && !hasDate ? 'time' : 'date';
   }
 
   function collectTimePickerPanels() {
@@ -3784,7 +3817,10 @@
       await sleep(80);
     }
 
-    const confirm = Array.from(panel.querySelectorAll('button, [role="button"]'))
+    const confirmationScope = panel.closest(
+      '.mobile-time-picker-panel, [data-timepicker-panel], [data-time-picker-panel], [role="dialog"][data-state="open"]'
+    ) || panel;
+    const confirm = Array.from(confirmationScope.querySelectorAll('button, [role="button"]'))
       .filter((node) => node instanceof HTMLElement && visible(node))
       .find((node) => /^(OK|Ok|ok|\u786e\u5b9a|\u78ba\u5b9a|\u5b8c\u6210|\u9009\u62e9|\u9078\u64c7)$/.test(normText(node.textContent || node.getAttribute('aria-label') || '')));
     if (confirm) {
@@ -3924,17 +3960,7 @@
     if (value == null || String(value).trim() === '') return buildFillResult(false, '日期值为空');
 
     const constraints = field?.constraints || {};
-    const hintText = [
-      field?.label || '',
-      field?.placeholder || '',
-      field?.context || '',
-      constraints?.hintText || '',
-      target.getAttribute?.('placeholder') || '',
-      target.getAttribute?.('aria-label') || '',
-      target.closest?.('.arco-form-item, .ant-form-item, .el-form-item, .form-item, [role="group"]')?.textContent || ''
-    ].join(' ');
-    const timeOnly = /时间|時間|\btime\b/i.test(hintText) && !/日期|生日|出生|成立|設立|设立|birth|date|establish|setup/i.test(hintText);
-    if (timeOnly) {
+    if (resolveDateFieldMode(field, target) === 'time') {
       const normalizedTime = normalizeTimeText(value);
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
         setNativeValue(target, normalizedTime);
@@ -5103,6 +5129,10 @@
   window.FormPilotV2Fill = {
     fillFields,
     verifyFieldsCompletion,
+    __test: {
+      resolveDateFieldMode,
+      normalizeTimeText
+    },
     __build: FORM_PILOT_V2_FILL_BUILD
   };
 })();

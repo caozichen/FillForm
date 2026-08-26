@@ -323,8 +323,25 @@ function inferCompositeIdDocumentHint(field = {}, hint = '') {
 }
 
 function isTimeOnlyField(field = {}, hint = '') {
-  const text = `${field?.label || ''} ${field?.placeholder || ''} ${field?.context || ''} ${hint || ''}`;
-  return /(時間|时间|\btime\b)/i.test(text) && !/(日期|生日|出生|成立|設立|设立|birth|date\s*of\s*birth|\bdob\b|establish|setup)/i.test(text);
+  const meta = field?.meta || {};
+  const widget = String(meta.widget || field?.widget || '').toLowerCase();
+  if (widget === 'birthday' || meta.birthdayComposite === true) return false;
+
+  const explicitMode = String(meta.datePickerMode || meta.temporalKind || meta.pickerMode || '').toLowerCase();
+  if (meta.timeOnly === true || explicitMode === 'time') return true;
+  if (['date', 'datetime', 'birthday'].includes(explicitMode)) return false;
+
+  const inputType = String(field?.constraints?.inputType || '').toLowerCase();
+  if (inputType === 'time') return true;
+  if (['date', 'month', 'datetime', 'datetime-local'].includes(inputType)) return false;
+
+  const primaryHint = `${field?.label || ''} ${field?.placeholder || ''}`;
+  const hasPrimaryTime = /(時間|时间|時\s*[:：]\s*分|时\s*[:：]\s*分|\btime\b)/i.test(primaryHint);
+  const hasPrimaryDate = /(日期|生日|出生|成立|設立|设立|birth|date\s*of\s*birth|\bdob\b|establish|setup)/i.test(primaryHint);
+  if (hasPrimaryTime && !hasPrimaryDate) return true;
+
+  const text = `${primaryHint} ${field?.context || ''} ${hint || ''}`;
+  return /(時間|时间|時\s*[:：]\s*分|时\s*[:：]\s*分|\btime\b)/i.test(text) && !/(日期|生日|出生|成立|設立|设立|birth|date\s*of\s*birth|\bdob\b|establish|setup)/i.test(text);
 }
 
 function buildTimeValue(field = {}) {
