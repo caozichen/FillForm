@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>Cascader and Address Model Fixture</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 32px; font-family: sans-serif; color: #172033; }
+      #fixture-root { display: grid; width: 760px; gap: 24px; }
+      .fixture-field { padding: 20px; border: 1px solid #cbd5e1; }
+      .fb-runtime-field-heading { margin-bottom: 12px; font-weight: 600; }
+      .fixture-trigger {
+        display: flex;
+        width: 100%;
+        min-height: 38px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border: 1px solid #94a3b8;
+        background: #fff;
+        color: #172033;
+      }
+      .fixture-trigger:disabled { color: #94a3b8; background: #f8fafc; }
+      .address-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+      .fixture-popup {
+        position: fixed;
+        top: 180px;
+        left: 48px;
+        z-index: 20;
+        display: flex;
+        min-width: 260px;
+        min-height: 80px;
+        border: 1px solid #64748b;
+        background: #fff;
+        box-shadow: 0 8px 24px rgb(15 23 42 / 18%);
+      }
+      .fixture-column { width: 220px; min-height: 96px; padding: 6px; border-right: 1px solid #e2e8f0; }
+      .fixture-option {
+        display: flex;
+        width: 100%;
+        min-height: 34px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px;
+        border: 0;
+        background: #fff;
+        text-align: left;
+      }
+      .fixture-option:hover { background: #eff6ff; }
+      .fixture-checkbox { width: 14px; height: 14px; margin-right: 8px; border: 1px solid #64748b; }
+      .fixture-checkbox[aria-checked="true"] { background: #2563eb; }
+      .fb-runtime-cascader-tag { display: inline-flex; padding: 2px 6px; background: #e0f2fe; }
+    </style>
+  </head>
+  <body>
+    <main id="fixture-root">
+      <section id="cascader-case" class="fixture-field fb-runtime-input-field" data-field-key="multi_cascader_fixture">
+        <div class="fb-runtime-field-heading">三层多选 Cascader</div>
+        <div id="cascader-control"></div>
+      </section>
+
+      <section id="address-case" class="fixture-field fb-runtime-input-field" data-field-key="address_fixture">
+        <div class="fb-runtime-field-heading">省市区地址</div>
+        <div id="address-controls" class="address-row"></div>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const cascaderTree = [
+          {
+            label: "华东区",
+            value: "east",
+            children: [
+              {
+                label: "江苏省",
+                value: "jiangsu",
+                children: [
+                  { label: "南京市", value: "nanjing" },
+                  { label: "苏州市", value: "suzhou" },
+                ],
+              },
+              {
+                label: "浙江省",
+                value: "zhejiang",
+                children: [{ label: "杭州市", value: "hangzhou" }],
+              },
+            ],
+          },
+          {
+            label: "华南区",
+            value: "south",
+            children: [
+              {
+                label: "广东省",
+                value: "guangdong",
+                children: [{ label: "深圳市", value: "shenzhen" }],
+              },
+            ],
+          },
+        ];
+
+        const defaultCascaderTree = [
+          {
+            label: "默认地区",
+            value: "option_1",
+            children: [
+              { label: "中国大陆", value: "option_1_1" },
+              { label: "香港", value: "option_1_2" },
+            ],
+          },
+        ];
+
+        const addressTree = [
+          {
+            label: "广东省",
+            value: "440000",
+            children: [
+              {
+                label: "深圳市",
+                value: "440300",
+                children: [{ label: "南山区", value: "440305" }],
+              },
+            ],
+          },
+          {
+            label: "上海市",
+            value: "310000",
+            children: [
+              {
+                label: "市辖区",
+                value: "310100",
+                children: [
+                  { label: "浦东新区", value: "310115" },
+                  { label: "徐汇区", value: "310104" },
+                ],
+              },
+            ],
+          },
+          {
+            label: "重庆市",
+            value: "500000",
+            children: [
+              {
+                label: "市辖区",
+                value: "500100",
+                children: [
+                  { label: "渝中区", value: "500103" },
+                  { label: "江北区", value: "500105" },
+                ],
+              },
+              {
+                label: "县",
+                value: "500200",
+                children: [
+                  { label: "城口县", value: "500229" },
+                  { label: "丰都县", value: "500230" },
+                ],
+              },
+            ],
+          },
+          { label: "香港", value: "810000" },
+          { label: "澳门", value: "820000" },
+          { label: "台湾", value: "710000" },
+        ];
+
+        const state = {
+          cascader: {
+            mobile: false,
+            multiple: true,
+            defaultTree: false,
+            modelValue: [],
+            selectedPaths: [],
+            activePath: [],
+            events: [],
+          },
+          address: {
+            disableDistrict: false,
+            modelValue: { region: { province: "", city: "", district: "" } },
+            events: [],
+          },
+          submission: {
+            cascader: [],
+            address: { region: { province: "", city: "", district: "" } },
+          },
+        };
+
+        const cascaderControl = document.getElementById("cascader-control");
+        const addressControls = document.getElementById("address-controls");
+
+        function clone(value) {
+          return JSON.parse(JSON.stringify(value));
+        }
+
+        function closePopups() {
+          document.querySelectorAll(".fixture-popup").forEach((node) => node.remove());
+          document.querySelectorAll('[aria-expanded="true"]').forEach((node) => {
+            node.setAttribute("aria-expanded", "false");
+            node.setAttribute("data-state", "closed");
+          });
+        }
+
+        function selectedCascaderLabels() {
+          return state.cascader.selectedPaths.map((path) => path.map((item) => item.label).join(" / "));
+        }
+
+        function currentCascaderTree() {
+          return state.cascader.defaultTree ? defaultCascaderTree : cascaderTree;
+        }
+
+        function renderCascaderTrigger() {
+          let trigger = document.getElementById("cascader-trigger");
+          if (!trigger) {
+            trigger = document.createElement("button");
+            trigger.id = "cascader-trigger";
+            trigger.type = "button";
+            trigger.className = "fixture-trigger fb-runtime-cascader-trigger fb-min-h-9 fb-items-start";
+            trigger.setAttribute("aria-controls", "cascader-panel");
+            trigger.setAttribute("aria-expanded", "false");
+            trigger.setAttribute("data-formpilot-v2-eid", "cascader-trigger");
+            trigger.setAttribute("data-state", "closed");
+            trigger.addEventListener("click", () => {
+              const open = document.getElementById("cascader-panel");
+              if (open) {
+                closePopups();
+                return;
+              }
+              trigger.setAttribute("aria-expanded", "true");
+              trigger.setAttribute("data-state", "open");
+              renderCascaderPanel();
+            });
+            cascaderControl.appendChild(trigger);
+          }
+          trigger.replaceChildren();
+          const valueWrap = document.createElement(state.cascader.multiple ? "div" : "span");
+          if (state.cascader.multiple) valueWrap.className = "fb-flex fb-flex-wrap";
+          const labels = selectedCascaderLabels();
+          if (labels.length) {
+            labels.forEach((label) => {
+              const tag = document.createElement("span");
+              tag.className = "fb-runtime-cascader-tag";
+              tag.textContent = label;
+              valueWrap.appendChild(tag);
+            });
+          } else {
+            const placeholder = document.createElement("span");
+            placeholder.textContent = "请选择地区";
+            placeholder.setAttribute("data-placeholder", "");
+            valueWrap.appendChild(placeholder);
+          }
+          trigger.appendChild(valueWrap);
+          const arrow = document.createElement("svg");
+          arrow.setAttribute("class", "lucide lucide-chevron-down");
+          trigger.appendChild(arrow);
+        }
+
+        function createCascaderOption(option, level, path) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "fixture-option fb-runtime-cascader-option";
+          const nextPath = [...path, option];
+          const selected = state.cascader.modelValue.includes(option.value);
+          if (state.cascader.multiple) {
+            const checkbox = document.createElement("span");
+            checkbox.className = "fixture-checkbox fb-runtime-cascader-checkbox";
+            checkbox.setAttribute("data-checked", selected ? "true" : "false");
+            button.appendChild(checkbox);
+          }
+          const label = document.createElement("span");
+          label.textContent = option.label;
+          button.appendChild(label);
+          if (Array.isArray(option.children) && option.children.length) {
+            const arrow = document.createElement("svg");
+            arrow.setAttribute("class", "lucide lucide-chevron-right");
+            button.appendChild(arrow);
+          }
+          const expandParent = () => {
+            if (!Array.isArray(option.children) || !option.children.length) return;
+            state.cascader.events.push({
+              action: "navigate",
+              level,
+              label: option.label,
+              value: option.value,
+              parent: true,
+            });
+            state.cascader.activePath = nextPath;
+            renderCascaderPanel();
+          };
+          button.addEventListener("mouseenter", expandParent);
+          button.addEventListener("click", () => {
+            state.cascader.events.push({
+              level,
+              label: option.label,
+              value: option.value,
+              parent: Array.isArray(option.children) && option.children.length > 0,
+            });
+            if (Array.isArray(option.children) && option.children.length) {
+              const leaves = [];
+              const collectLeaves = (node, currentPath) => {
+                if (!Array.isArray(node.children) || !node.children.length) {
+                  leaves.push({ option: node, path: currentPath });
+                  return;
+                }
+                node.children.forEach((child) => collectLeaves(child, [...currentPath, child]));
+              };
+              collectLeaves(option, nextPath);
+              const allSelected = leaves.every(({ option: leaf }) => state.cascader.modelValue.includes(leaf.value));
+              for (const { option: leaf, path: leafPath } of leaves) {
+                const existing = state.cascader.modelValue.indexOf(leaf.value);
+                if (allSelected && existing >= 0) {
+                  state.cascader.modelValue.splice(existing, 1);
+                  state.cascader.selectedPaths.splice(existing, 1);
+                } else if (!allSelected && existing < 0) {
+                  state.cascader.modelValue.push(leaf.value);
+                  state.cascader.selectedPaths.push(leafPath);
+                }
+              }
+              state.submission.cascader = [...state.cascader.modelValue];
+              state.cascader.activePath = nextPath;
+              renderCascaderTrigger();
+              renderCascaderPanel();
+              return;
+            }
+            if (!state.cascader.multiple) {
+              state.cascader.modelValue = nextPath.map((item) => item.value);
+              state.cascader.selectedPaths = [nextPath];
+              state.submission.cascader = [...state.cascader.modelValue];
+              renderCascaderTrigger();
+              closePopups();
+              return;
+            }
+            const existing = state.cascader.modelValue.indexOf(option.value);
+            if (existing >= 0) {
+              state.cascader.modelValue.splice(existing, 1);
+              state.cascader.selectedPaths.splice(existing, 1);
+            } else {
+              state.cascader.modelValue.push(option.value);
+              state.cascader.selectedPaths.push(nextPath);
+            }
+            state.submission.cascader = [...state.cascader.modelValue];
+            renderCascaderTrigger();
+            renderCascaderPanel();
+          });
+          return button;
+        }
+
+        function toggleCascaderOption(option, level, path) {
+          const nextPath = [...path, option];
+          state.cascader.events.push({
+            action: "toggle",
+            level,
+            label: option.label,
+            value: option.value,
+            parent: Array.isArray(option.children) && option.children.length > 0,
+          });
+          const leaves = [];
+          const collectLeaves = (node, currentPath) => {
+            if (!Array.isArray(node.children) || !node.children.length) {
+              leaves.push({ option: node, path: currentPath });
+              return;
+            }
+            node.children.forEach((child) => collectLeaves(child, [...currentPath, child]));
+          };
+          collectLeaves(option, nextPath);
+          const allSelected = leaves.every(({ option: leaf }) => state.cascader.modelValue.includes(leaf.value));
+          for (const { option: leaf, path: leafPath } of leaves) {
+            const existing = state.cascader.modelValue.indexOf(leaf.value);
+            if (allSelected && existing >= 0) {
+              state.cascader.modelValue.splice(existing, 1);
+              const pathIndex = state.cascader.selectedPaths.findIndex((selectedPath) => selectedPath.at(-1)?.value === leaf.value);
+              if (pathIndex >= 0) state.cascader.selectedPaths.splice(pathIndex, 1);
+            } else if (!allSelected && existing < 0) {
+              state.cascader.modelValue.push(leaf.value);
+              state.cascader.selectedPaths.push(leafPath);
+            }
+          }
+          state.submission.cascader = [...state.cascader.modelValue];
+          renderCascaderTrigger();
+        }
+
+        function createMobileCascaderOption(option, level, path) {
+          const row = document.createElement("div");
+          row.className = "fixture-option fb-runtime-cascader-option";
+          const checkboxButton = document.createElement("button");
+          checkboxButton.type = "button";
+          checkboxButton.className = "fixture-mobile-checkbox-button";
+          const checkbox = document.createElement("span");
+          checkbox.className = "fixture-checkbox fb-runtime-cascader-checkbox";
+          checkboxButton.appendChild(checkbox);
+          checkboxButton.addEventListener("click", () => {
+            toggleCascaderOption(option, level, path);
+            renderCascaderPanel();
+          });
+          row.appendChild(checkboxButton);
+
+          const textButton = document.createElement("button");
+          textButton.type = "button";
+          textButton.className = "fixture-mobile-text-button";
+          const label = document.createElement("span");
+          label.textContent = option.label;
+          textButton.appendChild(label);
+          if (Array.isArray(option.children) && option.children.length) {
+            const arrow = document.createElement("svg");
+            arrow.setAttribute("class", "lucide lucide-chevron-right");
+            textButton.appendChild(arrow);
+          }
+          textButton.addEventListener("click", () => {
+            if (Array.isArray(option.children) && option.children.length) {
+              state.cascader.events.push({ action: "navigate", level, label: option.label, value: option.value, parent: true });
+              state.cascader.activePath = [...path, option];
+              renderCascaderPanel();
+              return;
+            }
+            toggleCascaderOption(option, level, path);
+            renderCascaderPanel();
+          });
+          row.appendChild(textButton);
+          return row;
+        }
+
+        function renderCascaderPanel() {
+          document.getElementById("cascader-panel")?.remove();
+          const panel = document.createElement("div");
+          panel.id = "cascader-panel";
+          panel.className = "fixture-popup fb-runtime-cascader-content";
+          panel.setAttribute("role", "dialog");
+          panel.setAttribute("data-state", "open");
+
+          if (state.cascader.mobile) {
+            const tabs = document.createElement("div");
+            tabs.className = "fb-mobile-cascader-tabs";
+            panel.appendChild(tabs);
+            const level = state.cascader.activePath.length;
+            const parent = level > 0 ? state.cascader.activePath[level - 1] : null;
+            const options = parent?.children || currentCascaderTree();
+            const column = document.createElement("div");
+            column.className = "fixture-column";
+            const parentPath = state.cascader.activePath.slice(0, level);
+            options.forEach((option) => column.appendChild(createMobileCascaderOption(option, level, parentPath)));
+            panel.appendChild(column);
+            document.body.appendChild(panel);
+            return;
+          }
+
+          const levels = [currentCascaderTree()];
+          if (state.cascader.activePath[0]?.children) levels.push(state.cascader.activePath[0].children);
+          if (state.cascader.activePath[1]?.children) levels.push(state.cascader.activePath[1].children);
+          levels.forEach((options, level) => {
+            const column = document.createElement("div");
+            column.className = "fixture-column";
+            column.setAttribute("data-cascader-column", String(level));
+            const parentPath = state.cascader.activePath.slice(0, level);
+            options.forEach((option) => column.appendChild(createCascaderOption(option, level, parentPath)));
+            panel.appendChild(column);
+          });
+          document.body.appendChild(panel);
+        }
+
+        function addressOptionsFor(role) {
+          const region = state.address.modelValue.region;
+          if (role === "province") return addressTree;
+          const province = addressTree.find((item) => item.label === region.province);
+          if (role === "city") return province?.children || [];
+          const city = province?.children?.find((item) => item.label === region.city);
+          return city?.children || [];
+        }
+
+        function renderAddressControls() {
+          const region = state.address.modelValue.region;
+          const config = [
+            { role: "province", placeholder: "省份" },
+            { role: "city", placeholder: "城市" },
+            { role: "district", placeholder: "區縣" },
+          ];
+          config.forEach(({ role, placeholder }) => {
+            let trigger = document.getElementById(`address-${role}`);
+            if (!trigger) {
+              trigger = document.createElement("button");
+              trigger.id = `address-${role}`;
+              trigger.type = "button";
+              trigger.className = "fixture-trigger fb-runtime-control fb-runtime-input-control";
+              trigger.setAttribute("role", "combobox");
+              trigger.setAttribute("aria-controls", `address-${role}-panel`);
+              trigger.setAttribute("aria-expanded", "false");
+              trigger.setAttribute("data-formpilot-v2-eid", `address-${role}`);
+              trigger.setAttribute("data-state", "closed");
+              trigger.addEventListener("click", () => {
+                closePopups();
+                trigger.setAttribute("aria-expanded", "true");
+                trigger.setAttribute("data-state", "open");
+                renderAddressPanel(role);
+              });
+              addressControls.appendChild(trigger);
+            }
+            const disabled = state.address.disableDistrict && role === "district";
+            trigger.disabled = disabled;
+            trigger.setAttribute("aria-disabled", disabled ? "true" : "false");
+            const value = region[role];
+            if (value) trigger.setAttribute("data-value", value);
+            else trigger.removeAttribute("data-value");
+            const display = document.createElement("span");
+            display.setAttribute("data-slot", "select-value");
+            display.textContent = value || placeholder;
+            if (!value) display.setAttribute("data-placeholder", "");
+            trigger.replaceChildren();
+            trigger.appendChild(display);
+          });
+        }
+
+        function selectAddressOption(role, option) {
+          const region = state.address.modelValue.region;
+          if (role === "province") {
+            region.province = option.label;
+            region.city = "";
+            region.district = "";
+          } else if (role === "city") {
+            region.city = option.label;
+            region.district = "";
+          } else {
+            region.district = option.label;
+          }
+          state.address.events.push({
+            role,
+            label: option.label,
+            value: option.value,
+            region: clone(region),
+          });
+          state.submission.address = clone(state.address.modelValue);
+          closePopups();
+          renderAddressControls();
+        }
+
+        function renderAddressPanel(role) {
+          const panel = document.createElement("div");
+          panel.id = `address-${role}-panel`;
+          panel.className = "fixture-popup fixture-column";
+          panel.setAttribute("role", "listbox");
+          panel.setAttribute("data-state", "open");
+          addressOptionsFor(role).forEach((option) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "fixture-option";
+            button.setAttribute("role", "option");
+            button.setAttribute("data-value", option.value);
+            button.setAttribute("data-label", option.label);
+            button.textContent = option.label;
+            button.addEventListener("click", () => selectAddressOption(role, option));
+            panel.appendChild(button);
+          });
+          document.body.appendChild(panel);
+        }
+
+        function reset() {
+          closePopups();
+          state.cascader.mobile = false;
+          state.cascader.multiple = true;
+          state.cascader.defaultTree = false;
+          state.cascader.modelValue = [];
+          state.cascader.selectedPaths = [];
+          state.cascader.activePath = [];
+          state.cascader.events = [];
+          state.address.disableDistrict = false;
+          state.address.modelValue = { region: { province: "", city: "", district: "" } };
+          state.address.events = [];
+          state.submission = {
+            cascader: [],
+            address: { region: { province: "", city: "", district: "" } },
+          };
+          renderCascaderTrigger();
+          renderAddressControls();
+        }
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") closePopups();
+        });
+
+        window.__FORMPILOT_CASCADER_FIXTURE__ = {
+          reset,
+          setMobile(value) {
+            state.cascader.mobile = Boolean(value);
+            closePopups();
+            state.cascader.modelValue = [];
+            state.cascader.selectedPaths = [];
+            state.cascader.activePath = [];
+            state.cascader.events = [];
+            state.submission.cascader = [];
+            renderCascaderTrigger();
+          },
+          setMultiple(value) {
+            state.cascader.multiple = Boolean(value);
+            closePopups();
+            state.cascader.modelValue = [];
+            state.cascader.selectedPaths = [];
+            state.cascader.activePath = [];
+            state.cascader.events = [];
+            state.submission.cascader = [];
+            renderCascaderTrigger();
+          },
+          setDefaultTree(value) {
+            state.cascader.defaultTree = Boolean(value);
+            closePopups();
+            state.cascader.modelValue = [];
+            state.cascader.selectedPaths = [];
+            state.cascader.activePath = [];
+            state.cascader.events = [];
+            state.submission.cascader = [];
+            renderCascaderTrigger();
+          },
+          setDisableDistrict(value) {
+            state.address.disableDistrict = Boolean(value);
+            closePopups();
+            renderAddressControls();
+          },
+          snapshot() {
+            return clone(state);
+          },
+        };
+
+        reset();
+      })();
+    </script>
+  </body>
+</html>

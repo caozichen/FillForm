@@ -58,20 +58,7 @@ function hasStructuredDateEvidence(field) {
   );
 }
 
-function detectKindFromHint(field) {
-  const hint = `${field.label || ''} ${field.placeholder || ''} ${field.context || ''}`;
-  const shortLabel = normalizeText(field.label || '');
-  const shortPlaceholder = normalizeText(field.placeholder || '');
-
-  if (field.kind === FIELD_KINDS.ADDRESS_COMPONENT) return FIELD_KINDS.ADDRESS_COMPONENT;
-  if (Array.isArray(field.meta?.comboboxDomIds) && field.meta.comboboxDomIds.length >= 2 && field.meta?.detailDomId) {
-    return FIELD_KINDS.ADDRESS_COMPONENT;
-  }
-  if (hasStructuredDateEvidence(field)) return FIELD_KINDS.DATE;
-  if (field.meta?.selectLike) return FIELD_KINDS.SELECT;
-  if (shortLabel === '姓' || shortPlaceholder === '姓' || shortLabel === '姓氏' || shortPlaceholder === '姓氏') return FIELD_KINDS.LAST_NAME;
-  if (shortLabel === '名' || shortPlaceholder === '名' || shortLabel === '名字' || shortPlaceholder === '名字') return FIELD_KINDS.FIRST_NAME;
-
+function detectKindFromSemanticHint(hint) {
   if (/(公司|企業|企业|機構|机构|組織|组织|單位|单位|雇主|政府|government|organization|organisation|company|entity|agency|employer|corp|corporation).*(名稱|名称|name)|cert.*name|company\s*name|organization\s*name|organisation\s*name|legal\s*entity\s*name|enterprise\s*name/i.test(hint)) return FIELD_KINDS.COMPANY_NAME;
   if (isBankCardHint(hint)) return FIELD_KINDS.BANK_CARD;
   if (/(统一社会信用代码|統一社會信用代碼|社会信用代码|社會信用代碼|信用代码|信用代碼|统一信用代码|統一信用代碼|納税人識別號|纳税人识别号|商業登記(?:證)?號(?:碼)?|商业登记(?:证)?号(?:码)?|商業登記|商业登记|商業登記證|商业登记证|unified social credit(?: code| identifier)?|social credit code|taxpayer identification(?: number)?|tax id|brn|business registration(?: number| no\.?| #)?|registration number|company registration(?: number| no\.?)|證照編號|证照编号)/i.test(hint)) return FIELD_KINDS.COMPANY_ID;
@@ -89,6 +76,25 @@ function detectKindFromHint(field) {
   if (/请选择|請選擇|选择|選擇|下拉|選項|选项|combobox|dropdown|select|choose/i.test(hint)) return FIELD_KINDS.SELECT;
 
   return '';
+}
+
+function detectKindFromHint(field) {
+  const shortLabel = normalizeText(field.label || '');
+  const shortPlaceholder = normalizeText(field.placeholder || '');
+
+  if (field.kind === FIELD_KINDS.ADDRESS_COMPONENT) return FIELD_KINDS.ADDRESS_COMPONENT;
+  if (Array.isArray(field.meta?.comboboxDomIds) && field.meta.comboboxDomIds.length >= 2 && field.meta?.detailDomId) {
+    return FIELD_KINDS.ADDRESS_COMPONENT;
+  }
+  if (hasStructuredDateEvidence(field)) return FIELD_KINDS.DATE;
+  if (field.meta?.selectLike) return FIELD_KINDS.SELECT;
+  if (shortLabel === '姓' || shortPlaceholder === '姓' || shortLabel === '姓氏' || shortPlaceholder === '姓氏') return FIELD_KINDS.LAST_NAME;
+  if (shortLabel === '名' || shortPlaceholder === '名' || shortLabel === '名字' || shortPlaceholder === '名字') return FIELD_KINDS.FIRST_NAME;
+
+  const directHint = normalizeText(`${field.label || ''} ${field.placeholder || ''}`);
+  const directKind = detectKindFromSemanticHint(directHint);
+  if (directKind) return directKind;
+  return detectKindFromSemanticHint(normalizeText(field.context || ''));
 }
 
 function scoreField(field) {

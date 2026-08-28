@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>Framework Cascader Routing Fixture</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 32px; font-family: sans-serif; color: #172033; }
+      #fixture-root { display: grid; width: 720px; gap: 24px; }
+      .fixture-field { padding: 18px; border: 1px solid #cbd5e1; }
+      .fixture-label { margin-bottom: 10px; font-weight: 600; }
+      .fixture-trigger {
+        display: flex;
+        width: 100%;
+        min-height: 38px;
+        align-items: center;
+        padding: 8px 12px;
+        border: 1px solid #94a3b8;
+        background: #fff;
+        color: #172033;
+        text-align: left;
+      }
+      .framework-cascader-panel {
+        position: fixed;
+        top: 210px;
+        left: 48px;
+        z-index: 20;
+        display: flex;
+        min-height: 100px;
+        border: 1px solid #64748b;
+        background: #fff;
+      }
+      .framework-cascader-columns { display: flex; }
+      .framework-cascader-column {
+        display: grid;
+        align-content: start;
+        width: 190px;
+        min-height: 100px;
+        padding: 6px;
+        border-right: 1px solid #e2e8f0;
+      }
+      .framework-cascader-option {
+        min-height: 34px;
+        padding: 6px 10px;
+        border: 0;
+        background: #fff;
+        color: #172033;
+        text-align: left;
+      }
+      .framework-cascader-option:hover { background: #eff6ff; }
+    </style>
+  </head>
+  <body>
+    <main id="fixture-root">
+      <section id="arco-case" class="fixture-field arco-form-item">
+        <div class="fixture-label arco-form-item-label">Arco 三级级联</div>
+        <div class="arco-cascader">
+          <button
+            id="arco-trigger"
+            class="fixture-trigger arco-select-view"
+            type="button"
+            role="combobox"
+            aria-controls="arco-panel"
+            aria-expanded="false"
+          ><span class="arco-select-view-value" data-placeholder>请选择</span></button>
+        </div>
+      </section>
+
+      <section id="element-case" class="fixture-field el-form-item">
+        <div class="fixture-label el-form-item__label">Element UI 三级级联</div>
+        <div class="el-cascader">
+          <button
+            id="element-trigger"
+            class="fixture-trigger el-input__wrapper"
+            type="button"
+            role="combobox"
+            aria-controls="element-panel"
+            aria-expanded="false"
+          ><span class="el-select__selected-item" data-placeholder>请选择</span></button>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const trees = {
+          arco: [
+            {
+              label: "华东区",
+              value: "east",
+              children: [
+                {
+                  label: "江苏省",
+                  value: "jiangsu",
+                  children: [
+                    { label: "南京市", value: "nanjing" },
+                    { label: "苏州市", value: "suzhou" },
+                  ],
+                },
+                {
+                  label: "浙江省",
+                  value: "zhejiang",
+                  children: [{ label: "杭州市", value: "hangzhou" }],
+                },
+              ],
+            },
+            {
+              label: "华南区",
+              value: "south",
+              children: [
+                {
+                  label: "广东省",
+                  value: "guangdong",
+                  children: [{ label: "深圳市", value: "shenzhen" }],
+                },
+              ],
+            },
+          ],
+          element: [
+            {
+              label: "产品中心",
+              value: "products",
+              children: [
+                {
+                  label: "企业服务",
+                  value: "enterprise",
+                  children: [
+                    { label: "专业版", value: "professional" },
+                    { label: "基础版", value: "basic" },
+                  ],
+                },
+                {
+                  label: "个人服务",
+                  value: "personal",
+                  children: [{ label: "个人版", value: "individual" }],
+                },
+              ],
+            },
+            {
+              label: "解决方案",
+              value: "solutions",
+              children: [
+                {
+                  label: "零售行业",
+                  value: "retail",
+                  children: [{ label: "门店版", value: "store" }],
+                },
+              ],
+            },
+          ],
+        };
+
+        const states = {
+          arco: createState(),
+          element: createState(),
+        };
+
+        function createState() {
+          return {
+            activePath: [],
+            selectedPath: [],
+            modelValue: "",
+            submissionValue: "",
+            events: [],
+          };
+        }
+
+        function clone(value) {
+          return JSON.parse(JSON.stringify(value));
+        }
+
+        function triggerFor(kind) {
+          return document.getElementById(`${kind}-trigger`);
+        }
+
+        function closePanels() {
+          document.querySelectorAll(".framework-cascader-panel").forEach((node) => node.remove());
+          for (const kind of ["arco", "element"]) {
+            triggerFor(kind).setAttribute("aria-expanded", "false");
+          }
+        }
+
+        function renderTrigger(kind) {
+          const trigger = triggerFor(kind);
+          const state = states[kind];
+          const value = document.createElement("span");
+          value.className = kind === "arco" ? "arco-select-view-value" : "el-select__selected-item";
+          if (state.selectedPath.length) {
+            value.textContent = state.selectedPath.map((item) => item.label).join(" / ");
+            value.setAttribute("data-selected-value", state.modelValue);
+            trigger.setAttribute("data-value", state.modelValue);
+          } else {
+            value.textContent = "请选择";
+            value.setAttribute("data-placeholder", "");
+            trigger.removeAttribute("data-value");
+          }
+          trigger.replaceChildren(value);
+        }
+
+        function columnClass(kind) {
+          return kind === "arco"
+            ? "framework-cascader-column arco-cascader-panel-column"
+            : "framework-cascader-column el-cascader-menu";
+        }
+
+        function optionClass(kind) {
+          return kind === "arco"
+            ? "framework-cascader-option arco-cascader-option"
+            : "framework-cascader-option el-cascader-node";
+        }
+
+        function renderColumns(kind, panel) {
+          const state = states[kind];
+          const columns = document.createElement("div");
+          columns.className = kind === "arco"
+            ? "framework-cascader-columns arco-cascader-panel"
+            : "framework-cascader-columns el-cascader-panel";
+
+          const levels = [trees[kind]];
+          for (const active of state.activePath) {
+            if (Array.isArray(active.children) && active.children.length) levels.push(active.children);
+          }
+
+          levels.forEach((options, level) => {
+            const column = document.createElement("div");
+            column.className = columnClass(kind);
+            column.setAttribute("data-cascader-column", String(level));
+            column.setAttribute("role", "menu");
+
+            for (const option of options) {
+              const parent = Array.isArray(option.children) && option.children.length > 0;
+              const button = document.createElement("button");
+              button.type = "button";
+              button.className = optionClass(kind);
+              button.setAttribute("role", "menuitem");
+              button.setAttribute("data-value", option.value);
+              button.textContent = option.label;
+              if (parent) {
+                button.setAttribute("aria-haspopup", "menu");
+                button.setAttribute("aria-expanded", "false");
+                button.setAttribute("data-has-children", "true");
+              }
+
+              button.addEventListener("mouseenter", () => {
+                state.events.push({ action: "hover", level, label: option.label, parent });
+              });
+              button.addEventListener("click", () => {
+                state.events.push({ action: "click", level, label: option.label, parent });
+                const path = [...state.activePath.slice(0, level), option];
+                if (parent) {
+                  state.activePath = path;
+                  renderColumns(kind, panel);
+                  return;
+                }
+
+                state.selectedPath = path;
+                state.modelValue = option.value;
+                state.submissionValue = option.value;
+                renderTrigger(kind);
+                closePanels();
+              });
+              column.appendChild(button);
+            }
+            columns.appendChild(column);
+          });
+
+          panel.replaceChildren(columns);
+        }
+
+        function openPanel(kind) {
+          closePanels();
+          const state = states[kind];
+          state.activePath = [];
+          const trigger = triggerFor(kind);
+          trigger.setAttribute("aria-expanded", "true");
+
+          const panel = document.createElement("div");
+          panel.id = `${kind}-panel`;
+          panel.className = kind === "arco"
+            ? "framework-cascader-panel arco-trigger-popup"
+            : "framework-cascader-panel el-select-dropdown";
+          panel.setAttribute("role", "dialog");
+          panel.setAttribute("data-state", "open");
+          panel.setAttribute("aria-labelledby", trigger.id);
+          document.body.appendChild(panel);
+          renderColumns(kind, panel);
+        }
+
+        function reset() {
+          closePanels();
+          for (const kind of ["arco", "element"]) {
+            Object.assign(states[kind], createState());
+            renderTrigger(kind);
+          }
+        }
+
+        for (const kind of ["arco", "element"]) {
+          triggerFor(kind).addEventListener("click", () => openPanel(kind));
+        }
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") closePanels();
+        });
+
+        window.__FORMPILOT_FRAMEWORK_CASCADER_FIXTURE__ = {
+          reset,
+          snapshot() {
+            return clone(states);
+          },
+        };
+        reset();
+      })();
+    </script>
+  </body>
+</html>

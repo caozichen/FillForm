@@ -1,5 +1,5 @@
 (function initFormPilotV2Scan() {
-  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-26-temporal-mode-01';
+  const FORM_PILOT_V2_SCAN_BUILD = '2026-08-28-cascader-address-01';
   if (window.FormPilotV2Scan?.__build === FORM_PILOT_V2_SCAN_BUILD) return;
 
   const EID_ATTR = 'data-formpilot-v2-eid';
@@ -497,7 +497,7 @@
     if (container.querySelector('[required], [aria-required="true"]')) return true;
     if (
       container.querySelector(
-        '.arco-form-item-label-required-symbol, .ant-form-item-required, .el-form-item.is-required, .required, [data-required="true"]'
+        '.arco-form-item-label-required-symbol, .ant-form-item-required, .el-form-item.is-required, .form-field-label__text--required, .required, [data-required="true"]'
       )
     ) {
       return true;
@@ -1427,6 +1427,10 @@
     if (el instanceof HTMLSelectElement && el.multiple) return true;
     if (getAttrText(el, 'aria-multiselectable').toLowerCase() === 'true') return true;
     if (/(^|\s|-)multi(select|ple)?(\s|-|$)|multiple|多选|多選/.test(attrText)) return true;
+    if (
+      el.matches?.('.fb-runtime-cascader-trigger') &&
+      Array.from(el.children).some((node) => node instanceof HTMLElement && /(^|\s)fb-flex-wrap(\s|$)/.test(node.className || ''))
+    ) return true;
     if (el.querySelector?.('[role="checkbox"], input[type="checkbox"]')) return true;
     return false;
   }
@@ -1446,9 +1450,22 @@
     return !!pickerMode;
   }
 
-  function isCustomRendererSignatureLike(row, label = '') {
-    const hint = `${label} ${normText(row?.innerText || '')}`;
-    return /(签名|簽名|签署|簽署|手写签名|手寫簽名|signature|sign\s*here|e-sign)/i.test(hint);
+  function getCustomRendererSignatureTrigger(row, label = '') {
+    if (!(row instanceof Element)) return null;
+    const hint = `${label} ${normText(row.innerText || '')}`;
+    if (!/(签名|簽名|签署|簽署|手写签名|手寫簽名|signature|sign\s*here|e-sign)/i.test(hint)) return null;
+
+    const explicitTrigger = Array.from(
+      row.querySelectorAll('.fb-signature-empty-trigger, .fb-signature-filled-surface button')
+    ).find((node) => node instanceof HTMLElement && visible(node));
+    if (explicitTrigger instanceof HTMLElement) return explicitTrigger;
+
+    return Array.from(row.querySelectorAll('button[type="button"], button:not([type])')).find((node) => {
+      if (!(node instanceof HTMLElement) || !visible(node) || node.disabled) return false;
+      return !!node.querySelector(
+        '.lucide-pen-line, .lucide-eraser, [class*="signature"], [aria-label*="签名"], [aria-label*="簽名"], [aria-label*="signature" i]'
+      );
+    }) || null;
   }
 
   function getCustomRendererFieldKey(row) {
@@ -1830,8 +1847,24 @@
     for (const row of rows) {
       if (!(row instanceof Element) || skipNodes.has(row)) continue;
       const label = extractCustomRendererLabel(row);
-      if (isCustomRendererSignatureLike(row, label)) {
+      const signatureTrigger = getCustomRendererSignatureTrigger(row, label);
+      if (signatureTrigger instanceof Element) {
+        const signatureRequired = inferRequiredFromContext(row, `${label} ${normText(row.innerText || '')}`);
         markCustomRendererNodes(skipNodes, row);
+        fields.push(buildCustomRendererField({
+          row,
+          locatorEl: signatureTrigger,
+          kind: 'text',
+          label,
+          placeholder: getCustomRendererPlaceholder(signatureTrigger),
+          extraMeta: {
+            widget: 'signature',
+            signature: true,
+            required: signatureRequired,
+            componentGroup: true,
+            questionLike: true
+          }
+        }));
         continue;
       }
 
@@ -1951,12 +1984,12 @@
         (addressSelectTriggers.length >= 2 || (addressSelectTriggers.length >= 1 && addressDetailInput instanceof Element && ADDRESS_HIERARCHY_HINT_RE.test(addressHint)))
       ) {
         const comboMeta = addressSelectTriggers.slice(0, 3).map((node, index) => {
-          const comboHint = `${getLabelText(node)} ${getAttrText(node, 'aria-label')} ${getAttrText(node, 'placeholder')} ${getAttrText(node, 'title')} ${nearestText(node)}`;
+          const fallbackRole = index === 0 ? 'province' : (index === 1 ? 'city' : 'district');
           return {
             domId: ensureDomId(resolveFieldLocatorElement(node, true)),
             selector: buildSelector(resolveFieldLocatorElement(node, true)),
             label: getLabelText(node) || getCustomRendererPlaceholder(node),
-            role: inferAddressSlot(comboHint, index === 0 ? 'province' : (index === 1 ? 'city' : 'district'))
+            role: fallbackRole
           };
         });
         const sectionHintMatch = addressHint.match(ADDRESS_SECTION_HINT_RE);
@@ -2050,6 +2083,7 @@
       const cascaderTrigger = Array.from(row.querySelectorAll('.fb-runtime-cascader-trigger, [data-cascader], [class*="cascader"]'))
         .find((node) => node instanceof Element && visible(node) && !isCustomRendererDateTrigger(node, label));
       if (cascaderTrigger instanceof Element) {
+        const multiSelect = isMultiSelectTrigger(cascaderTrigger);
         markCustomRendererNodes(skipNodes, row);
         fields.push(buildCustomRendererField({
           row,
@@ -2058,7 +2092,7 @@
           label,
           placeholder: getCustomRendererPlaceholder(cascaderTrigger),
           options: collectSelectOptions(cascaderTrigger),
-          extraMeta: { widget: 'cascader', cascader: true, selectLike: true }
+          extraMeta: { widget: 'cascader', cascader: true, selectLike: true, multiSelect }
         }));
         continue;
       }
@@ -2379,6 +2413,16 @@
     return fields;
   }
 
+  function hasMultipleFieldKeyOwners(inputs = []) {
+    const owners = new Set();
+    for (const node of inputs) {
+      const owner = node?.closest?.('[data-field-key]');
+      if (owner) owners.add(normText(owner.getAttribute?.('data-field-key')) || owner);
+      if (owners.size > 1) return true;
+    }
+    return false;
+  }
+
   function detectSegmentedTextFields(root, skipNodes) {
     const fields = [];
     const groups = Array.from(
@@ -2395,6 +2439,7 @@
         group.querySelectorAll('input[type="text"], input:not([type]), input[type="tel"], input[type="number"], input[inputmode="numeric"], input[inputmode="decimal"]')
       ).filter(visible);
       if (inputs.length < 3) continue;
+      if (hasMultipleFieldKeyOwners(inputs)) continue;
       const segmentLikeCount = inputs.filter((node) => looksLikeSegmentInput(node, inputs)).length;
       const hasSemanticContext = /(商業登記|商业登记|商業登記證|商业登记证|brn|business registration|registration number|unified social credit|social credit code|taxpayer identification|tax id|驗證碼|验证码|verify code|verification code)/i.test(semanticSource) || isBankCardHintText(semanticSource);
       const segmentInfos = inputs.map((node, index) => {
@@ -2955,6 +3000,7 @@
     isDateHintText,
     isDatePickerClassText,
     inferDatePickerMode,
+    hasMultipleFieldKeyOwners,
     classifyField,
     visible,
     ensureDomId,

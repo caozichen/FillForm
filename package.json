@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build && node scripts/sync-extension.mjs",
+    "check:cascader-address": "node scripts/check-cascader-address-regression.mjs",
+    "check:framework-cascader": "node scripts/check-framework-cascader-routing.mjs",
     "check:detect": "node scripts/check-detect-engine.mjs",
     "check:hashids": "node scripts/check-hashids-crypto.mjs",
     "zip": "wxt zip",

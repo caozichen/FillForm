@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>Custom Renderer Signature Fixture</title>
+    <style>
+      body { margin: 0; padding: 32px; font-family: sans-serif; }
+      form-renderer, .fb-form-fields, [data-field-key] { display: block; }
+      [data-field-key] { width: 640px; padding: 20px; border: 1px solid #ddd; }
+      .fb-runtime-field-heading { margin-bottom: 12px; font-weight: 600; }
+      .fb-signature-empty-trigger, .fb-signature-filled-surface { width: 100%; min-height: 100px; }
+      [role="dialog"] { position: fixed; inset: 40px; padding: 24px; background: white; border: 1px solid #999; }
+      [role="dialog"][hidden] { display: none; }
+      canvas { display: block; width: 600px; height: 240px; border: 1px solid #ccc; }
+      .dialog-actions { margin-top: 12px; }
+      .fb-signature-filled-surface { display: flex; align-items: center; justify-content: center; gap: 12px; }
+    </style>
+  </head>
+  <body>
+    <form-renderer>
+      <div class="fb-form-fields">
+        <div data-field-key="signature_fixture">
+          <div class="fb-runtime-field-heading"><span class="form-field-label__text--required">签名</span></div>
+          <button type="button" class="fb-signature-empty-trigger">
+            <svg class="lucide-pen-line" aria-hidden="true"></svg>
+            <span>请在此处签名</span>
+          </button>
+        </div>
+        <div data-field-key="mobile_signature_fixture" data-mobile-signature>
+          <div class="fb-runtime-field-heading"><span class="form-field-label__text--required">移动端签名</span></div>
+          <button type="button">
+            <svg class="lucide-pen-line" aria-hidden="true"></svg>
+            <span>点击签名</span>
+          </button>
+        </div>
+      </div>
+    </form-renderer>
+
+    <div role="dialog" data-state="open" hidden>
+      <canvas></canvas>
+      <div class="dialog-actions">
+        <button type="button" data-confirm>确定</button>
+      </div>
+    </div>
+
+    <script>
+      const rows = Array.from(document.querySelectorAll('[data-field-key]'));
+      const dialog = document.querySelector('[role="dialog"]');
+      const canvas = dialog.querySelector('canvas');
+      const confirmButton = dialog.querySelector('[data-confirm]');
+      let drawing = false;
+      let hasStroke = false;
+      let activeRow = null;
+
+      function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = Math.max(1, Math.round(rect.width));
+        canvas.height = Math.max(1, Math.round(rect.height));
+        const context = canvas.getContext('2d');
+        context.lineWidth = 2;
+        context.lineCap = 'round';
+        context.lineJoin = 'round';
+        context.strokeStyle = '#0f172a';
+      }
+
+      rows.forEach((row) => {
+        row.addEventListener('click', (event) => {
+          if (!event.target.closest('button')) return;
+          activeRow = row;
+          drawing = false;
+          hasStroke = false;
+          confirmButton.disabled = false;
+          confirmButton.textContent = '确定';
+          dialog.hidden = false;
+          requestAnimationFrame(resizeCanvas);
+        });
+      });
+      canvas.addEventListener('mousedown', (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const context = canvas.getContext('2d');
+        drawing = true;
+        hasStroke = true;
+        context.beginPath();
+        context.moveTo(event.clientX - rect.left, event.clientY - rect.top);
+      });
+      canvas.addEventListener('mousemove', (event) => {
+        if (!drawing) return;
+        const rect = canvas.getBoundingClientRect();
+        const context = canvas.getContext('2d');
+        context.lineTo(event.clientX - rect.left, event.clientY - rect.top);
+        context.stroke();
+      });
+      canvas.addEventListener('mouseup', () => {
+        drawing = false;
+        canvas.getContext('2d').closePath();
+      });
+      confirmButton.addEventListener('click', () => {
+        if (!hasStroke || !activeRow) return;
+        confirmButton.disabled = true;
+        confirmButton.textContent = '上传中';
+        setTimeout(() => {
+          const mobile = activeRow.hasAttribute('data-mobile-signature');
+          activeRow.innerHTML = mobile
+            ? `<div class="fb-runtime-field-heading"><span class="form-field-label__text--required">移动端签名</span></div>
+              <button type="button">
+                <span role="img" aria-label="签名预览"></span>
+                <svg class="lucide-eraser"></svg><span>重写</span>
+              </button>`
+            : `<div class="fb-runtime-field-heading"><span class="form-field-label__text--required">签名</span></div>
+              <div class="fb-signature-filled-surface">
+                <span role="img" aria-label="签名预览"></span>
+                <button type="button"><svg class="lucide-eraser"></svg><span>重写</span></button>
+              </div>`;
+          dialog.hidden = true;
+        }, 120);
+      });
+    </script>
+  </body>
+</html>

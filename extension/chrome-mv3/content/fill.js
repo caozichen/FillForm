@@ -1,5 +1,5 @@
 (function initFormPilotV2Fill() {
-  const FORM_PILOT_V2_FILL_BUILD = '2026-08-26-temporal-mode-01';
+  const FORM_PILOT_V2_FILL_BUILD = '2026-08-28-cascader-address-01';
   if (window.FormPilotV2Fill?.__build === FORM_PILOT_V2_FILL_BUILD) return;
 
   const utils = window.FormPilotV2Utils || {};
@@ -1165,11 +1165,16 @@
   function collectCascadeColumns(scope = document) {
     if (!(scope instanceof Element) && scope !== document) return [];
     const root = scope === document ? document : scope;
-    const columns = Array.from(
+    const declaredColumns = Array.from(
       root.querySelectorAll(
         '.arco-cascader-panel-column, .arco-cascader-list, .ant-cascader-menu, .el-cascader-menu, [data-cascader-column], [role="menu"]'
       )
     ).filter((node) => visible(node));
+    const runtimeColumns = Array.from(root.querySelectorAll('.fb-runtime-cascader-option'))
+      .filter((node) => visible(node))
+      .map((node) => node.parentElement)
+      .filter((node) => node instanceof Element && visible(node));
+    const columns = Array.from(new Set([...declaredColumns, ...runtimeColumns]));
     const normalized = columns
       .filter((node, idx, list) => !list.some((other, j) => j !== idx && other.contains(node) && visible(other)))
       .sort((a, b) => {
@@ -1179,6 +1184,165 @@
         return ra.top - rb.top;
       });
     return normalized;
+  }
+
+  function isExplicitCascaderField(field = null, triggerEl = null) {
+    if (!(triggerEl instanceof Element)) return false;
+    if (
+      triggerEl.matches?.('.fb-runtime-cascader-trigger') ||
+      triggerEl.closest?.('.fb-runtime-cascader-trigger')
+    ) return true;
+
+    const customRenderer = field?.meta?.customRendererAdapter === 'fb-form-renderer';
+    return customRenderer && (
+      triggerEl.matches?.('[data-cascader]') ||
+      !!triggerEl.closest?.('[data-cascader]')
+    );
+  }
+
+  function getRuntimeCascaderOptionRow(item) {
+    const node = item?.node instanceof Element ? item.node : (item instanceof Element ? item : null);
+    if (!(node instanceof Element)) return null;
+    return node.closest('.fb-runtime-cascader-option') || node;
+  }
+
+  function isMobileRuntimeCascaderItem(item) {
+    const row = getRuntimeCascaderOptionRow(item);
+    return row instanceof Element && row.tagName.toLowerCase() !== 'button' &&
+      Array.from(row.children).some((node) => node instanceof HTMLButtonElement);
+  }
+
+  function resolveRuntimeCascaderActionNode(item) {
+    const row = getRuntimeCascaderOptionRow(item);
+    if (!(row instanceof HTMLElement)) return null;
+    if (row instanceof HTMLButtonElement) return row;
+    const directButtons = Array.from(row.children)
+      .filter((node) => node instanceof HTMLButtonElement && !node.disabled);
+    return directButtons[directButtons.length - 1] || (item?.node instanceof HTMLElement ? item.node : row);
+  }
+
+  function hoverRuntimeCascaderParent(item) {
+    const row = getRuntimeCascaderOptionRow(item);
+    if (!(row instanceof HTMLElement)) return false;
+    const mouseInit = { bubbles: true, cancelable: true, view: window };
+    const PointerCtor = window.PointerEvent || window.MouseEvent;
+    try {
+      row.dispatchEvent(new PointerCtor('pointerover', { ...mouseInit, pointerType: 'mouse', isPrimary: true }));
+      row.dispatchEvent(new PointerCtor('pointerenter', { ...mouseInit, pointerType: 'mouse', isPrimary: true }));
+    } catch {
+      // ignore
+    }
+    row.dispatchEvent(new MouseEvent('mouseover', mouseInit));
+    row.dispatchEvent(new MouseEvent('mouseenter', mouseInit));
+    return true;
+  }
+
+  function splitCascaderValuePaths(value, multiSelect = false) {
+    const toParts = (item) => {
+      if (Array.isArray(item)) return item.map((part) => normText(part)).filter(Boolean);
+      if (item && typeof item === 'object') {
+        if (Array.isArray(item.path)) return toParts(item.path);
+        if (Array.isArray(item.labels)) return toParts(item.labels);
+        return splitCascadeTargetText(item.value || item.label || item.text || '');
+      }
+      return splitCascadeTargetText(item);
+    };
+
+    if (Array.isArray(value)) {
+      if (!multiSelect && value.every((item) => item == null || ['string', 'number'].includes(typeof item))) {
+        const path = toParts(value);
+        return path.length ? [path] : [[]];
+      }
+      const paths = value.map(toParts).filter((parts) => parts.length);
+      return paths.length ? paths : [[]];
+    }
+    if (value && typeof value === 'object') {
+      const rawPaths = Array.isArray(value.paths) ? value.paths : (Array.isArray(value.values) ? value.values : [value]);
+      const paths = rawPaths.map(toParts).filter((parts) => parts.length);
+      return paths.length ? paths : [[]];
+    }
+
+    const raw = normText(value);
+    if (!raw) return [[]];
+    const lines = raw.split(/\s*(?:\n|\r|;|；)\s*/).map((item) => normText(item)).filter(Boolean);
+    return (lines.length ? lines : [raw]).map(toParts).filter((parts) => parts.length);
+  }
+
+  function isSyntheticCascaderPath(parts = []) {
+    if (!Array.isArray(parts) || !parts.length) return true;
+    return parts.every((part) => /^(?:default(?:region|mainland|hongkong)|option[_\s-]*\d+(?:[_\s-]*\d+)*|选项\d+|選項\d+)$/i.test(normalizeChoiceText(part)));
+  }
+
+  function isCascaderPlaceholderText(text = '', field = null) {
+    const value = normText(text);
+    if (!value) return false;
+    const configuredPlaceholder = normText(field?.placeholder || '');
+    if (
+      configuredPlaceholder &&
+      normalizeChoiceText(value) === normalizeChoiceText(configuredPlaceholder)
+    ) return true;
+    return /^(?:请\s*选择|請\s*選擇).*$/i.test(value) ||
+      /^(?:选择|選擇)(?:地区|地區|区域|區域|省市|选项|選項|内容|內容|项目|項目)?(?:\s*[v∨▾▼▽⌄])?$/i.test(value) ||
+      /^(?:(?:please\s+)?(?:select|choose))(?:\s+.*)?(?:\s*[v∨▾▼▽⌄])?$/i.test(value);
+  }
+
+  function readCascaderDisplayPaths(triggerEl, field = null) {
+    if (!(triggerEl instanceof Element)) return [];
+    const tags = Array.from(triggerEl.querySelectorAll('.fb-runtime-cascader-tag'))
+      .filter((node) => visible(node))
+      .map((node) => normText(node.textContent || ''))
+      .filter((text) => text && !isCascaderPlaceholderText(text, field));
+    if (tags.length) return Array.from(new Set(tags));
+    const display = readSelectLikeDisplayText(triggerEl);
+    return display && !isCascaderPlaceholderText(display, field) && !isGenericOptionDisplayText(display) ? [display] : [];
+  }
+
+  function cascaderPathMatches(displayText = '', targetParts = []) {
+    const displayParts = splitCascadeTargetText(displayText);
+    if (!displayParts.length || !Array.isArray(targetParts) || !targetParts.length) return false;
+    if (displayParts.length !== targetParts.length) return false;
+    return targetParts.every((part, index) => {
+      const aliases = cascadeLevelAliases(part, index);
+      return matchesDisplayText(displayParts[index], aliases.length ? aliases : [part]);
+    });
+  }
+
+  function getActiveCascaderPanel(fallbackPanel = null) {
+    const panels = collectOpenPanels().filter((node) =>
+      node instanceof Element && (
+        node.matches?.('.fb-runtime-cascader-content, [class*="cascader-content"], [class*="cascader-panel"]') ||
+        !!node.querySelector?.('.fb-runtime-cascader-option')
+      )
+    );
+    return panels[panels.length - 1] || (fallbackPanel instanceof Element && visible(fallbackPanel) ? fallbackPanel : null);
+  }
+
+  function collectCascaderLevelOptions(panel, depth = 0) {
+    const activePanel = getActiveCascaderPanel(panel) || panel || document;
+    const columns = collectCascadeColumns(activePanel);
+    const mobilePanel = !!activePanel?.querySelector?.('.fb-mobile-cascader-tabs, .fb-mobile-cascader-tab');
+    const column = mobilePanel
+      ? (columns[columns.length - 1] || activePanel)
+      : (columns[depth] || columns[columns.length - 1] || activePanel);
+    const options = collectOptionNodes(column)
+      .filter((option) => !isCascaderPlaceholderText(option.text || option.value || ''));
+    return { panel: activePanel, columns, column, options };
+  }
+
+  function cascaderLevelSignature(state) {
+    const optionText = (state?.options || []).map((item) => normText(item.text || item.value || '')).join('|');
+    return `${state?.columns?.length || 0}:${optionText}`;
+  }
+
+  async function waitForCascaderLevelChange(panel, depth, beforeSignature, timeout = 1600) {
+    const startedAt = Date.now();
+    let latest = collectCascaderLevelOptions(panel, depth);
+    while (Date.now() - startedAt < Math.max(240, Number(timeout || 0))) {
+      await sleep(80);
+      latest = collectCascaderLevelOptions(latest.panel || panel, depth);
+      if (latest.options.length && cascaderLevelSignature(latest) !== beforeSignature) return latest;
+    }
+    return latest;
   }
 
   function pickRandom(items = []) {
@@ -1290,18 +1454,6 @@
     return Array.from(result).filter(Boolean);
   }
 
-  function formatCascaderDisplayText(targetText = '') {
-    const mapPart = (part = '') => {
-      const normalized = normalizeChoiceText(part);
-      if (/^(defaultregion|option1)$/.test(normalized)) return '\u9ed8\u8ba4\u5730\u533a';
-      if (/^(defaultmainland|option11)$/.test(normalized)) return '\u4e2d\u56fd\u5927\u9646';
-      if (/^(defaulthongkong|option12)$/.test(normalized)) return '\u9999\u6e2f';
-      return normText(part);
-    };
-    const parts = splitCascadeTargetText(targetText).map(mapPart).filter(Boolean);
-    return parts.length ? parts.join(' / ') : normText(targetText);
-  }
-
   function isGenericOptionDisplayText(text = '') {
     return /^选项\d+$|^選項\d+$|^option\s*\d+$/i.test(normText(text));
   }
@@ -1361,6 +1513,95 @@
     return /(香港|澳門|澳门|台灣|台湾|hong\s*kong|macau|macao|taiwan)/i.test(normText(text));
   }
 
+  function normalizeMunicipalityName(text = '') {
+    const value = normText(text).replace(/重慶/g, '重庆');
+    const match = value.match(/^(北京|天津|上海|重庆)(?:市)?$/);
+    return match ? `${match[1]}市` : '';
+  }
+
+  function resolveAddressLevelTargets(addr = {}, slot = '') {
+    const normalizedSlot = inferAddressSlot(slot, slot);
+    const directValue = normText(pickAddressValue(addr, normalizedSlot, ''));
+    if (normalizedSlot !== 'city') return directValue ? [directValue] : [];
+
+    const municipality = normalizeMunicipalityName(addr.province);
+    if (!municipality || isHmtAddressText(addr.province)) return directValue ? [directValue] : [];
+    if (/^(市辖区|市轄區|县|縣)$/.test(directValue)) return [directValue];
+
+    const district = normText(addr.district);
+    const targets = [];
+    if (municipality === '重庆市') {
+      if (/(自治县|自治縣|县|縣)$/.test(district)) targets.push('县', '縣');
+      else if (/(区|區)$/.test(district)) targets.push('市辖区', '市轄區');
+      else targets.push('市辖区', '市轄區', '县', '縣');
+    } else {
+      targets.push('市辖区', '市轄區');
+    }
+
+    // 部分旧地区树仍用直辖市名作为第二级，保留为有序兼容候选。
+    if (directValue) targets.push(directValue);
+    if (municipality) targets.push(municipality);
+    return Array.from(new Set(targets.map((item) => normText(item)).filter(Boolean)));
+  }
+
+  function splitAdministrativeSuffix(text = '') {
+    const normalized = normText(text).replace(/\s+/g, '').replace(/重慶/g, '重庆').toLowerCase();
+    const suffixMatch = normalized.match(/(特别行政区|特別行政區|维吾尔自治区|維吾爾自治區|壮族自治区|壯族自治區|回族自治区|回族自治區|自治区|自治區|自治州|市辖区|市轄區|自治县|自治縣|新区|新區|地区|地區|省|市|区|區|县|縣|州|盟)$/);
+    const rawSuffix = suffixMatch?.[1] || '';
+    const suffix = rawSuffix
+      .replace(/特別/g, '特别')
+      .replace(/自治區/g, '自治区')
+      .replace(/市轄區/g, '市辖区')
+      .replace(/自治縣/g, '自治县')
+      .replace(/新區/g, '新区')
+      .replace(/地區/g, '地区')
+      .replace(/區/g, '区')
+      .replace(/縣/g, '县');
+    return {
+      full: normalized
+        .replace(/特別/g, '特别')
+        .replace(/自治區/g, '自治区')
+        .replace(/市轄區/g, '市辖区')
+        .replace(/自治縣/g, '自治县')
+        .replace(/新區/g, '新区')
+        .replace(/地區/g, '地区')
+        .replace(/區/g, '区')
+        .replace(/縣/g, '县'),
+      base: rawSuffix ? normalized.slice(0, -rawSuffix.length) : normalized,
+      suffix
+    };
+  }
+
+  function matchesAddressTargetText(displayText = '', targets = []) {
+    const current = splitAdministrativeSuffix(displayText);
+    if (!current.full) return false;
+    return targets.some((target) => {
+      const expected = splitAdministrativeSuffix(target);
+      if (!expected.full) return false;
+      if (current.full === expected.full) return true;
+      if (!current.base || current.base !== expected.base) return false;
+      return !current.suffix || !expected.suffix || current.suffix === expected.suffix;
+    });
+  }
+
+  function chooseStrictAddressOption(options = [], targets = []) {
+    for (const target of targets) {
+      const matched = options.find((option) => {
+        const values = Array.from(new Set([
+          option?.text || '',
+          option?.value || '',
+          ...(Array.isArray(option?.aliases) ? option.aliases : []),
+          option?.node?.textContent || '',
+          option?.node?.getAttribute?.('data-label') || '',
+          option?.node?.getAttribute?.('aria-label') || ''
+        ].map((item) => normText(item)).filter(Boolean)));
+        return values.some((value) => matchesAddressTargetText(value, [target]));
+      });
+      if (matched) return matched;
+    }
+    return null;
+  }
+
   function pickAddressFallbackOption(options = [], field = null) {
     const comboIndex = Number(field?.meta?.addressComboIndex ?? -1);
     if (field?.meta?.addressComboLevel === true && comboIndex === 0) {
@@ -1377,7 +1618,7 @@
   }
 
   function isPlaceholderDisplayText(text = '') {
-    return /请选择|請選擇|select|省份|城市|区县|地區|地区|區域|区域/i.test(normText(text));
+    return /请选择|請選擇|select|省份|城市|区县|區縣|地區|地区|區域|区域/i.test(normText(text));
   }
 
   function chooseNativeSelectOption(options, rawValue = '') {
@@ -1607,6 +1848,10 @@
     ].join(' ').toLowerCase();
     if (String(triggerEl.getAttribute('aria-multiselectable') || '').toLowerCase() === 'true') return true;
     if (/(^|\s|-)multi(select|ple)?(\s|-|$)|multiple|多选|多選/.test(attrText)) return true;
+    if (
+      triggerEl.matches?.('.fb-runtime-cascader-trigger') &&
+      Array.from(triggerEl.children).some((node) => node instanceof HTMLElement && /(^|\s)fb-flex-wrap(\s|$)/.test(node.className || ''))
+    ) return true;
     return !!triggerEl.querySelector?.('[role="checkbox"], input[type="checkbox"]');
   }
 
@@ -1888,6 +2133,151 @@
     return { ok: false, reason: '级联下拉未选中叶子项', selectedText: finalText };
   }
 
+  async function openExplicitCascaderPanel(buttonEl) {
+    if (!(buttonEl instanceof HTMLElement)) return { panel: null, options: [] };
+    if (String(buttonEl.getAttribute('aria-expanded') || '').toLowerCase() === 'true') {
+      await closeSelectLikePanel(buttonEl);
+    }
+    const beforePanels = new Set(collectOpenPanels());
+    const panelId = buttonEl.getAttribute('aria-controls') || buttonEl.getAttribute('aria-owns') || '';
+    dispatchSelectOpenSequence(buttonEl, 'mouse');
+    await sleep(140);
+    const opened = await waitForPanelOptions(buttonEl, beforePanels, panelId, 2200);
+    const panel = getActiveCascaderPanel(opened.panel) || opened.panel;
+    const options = collectCascaderLevelOptions(panel, 0).options;
+    return { panel, options: options.length ? options : opened.options };
+  }
+
+  async function selectExplicitCascaderPath(buttonEl, targetParts = [], strictTarget = true, settings = {}, field = null) {
+    const beforePaths = readCascaderDisplayPaths(buttonEl, field);
+    if (strictTarget && beforePaths.some((display) => cascaderPathMatches(display, targetParts))) {
+      return { ok: true, reason: '级联路径已是目标值', selectedText: beforePaths.join('、'), targetMatched: true };
+    }
+    if (!strictTarget && beforePaths.length) {
+      return { ok: true, reason: '级联已有真实选择，保持不变', selectedText: beforePaths.join('、'), targetMatched: true };
+    }
+
+    const opened = await openExplicitCascaderPanel(buttonEl);
+    if (!opened.panel && !opened.options.length) {
+      return { ok: false, reason: '未打开级联面板', selectedText: beforePaths.join('、'), targetMatched: false };
+    }
+
+    let panel = opened.panel || resolvePanelFromOptionNode(opened.options[0]?.node) || document;
+    const maxDepth = strictTarget ? Math.max(1, targetParts.length) : 8;
+    for (let depth = 0; depth < maxDepth; depth += 1) {
+      let state = collectCascaderLevelOptions(panel, depth);
+      panel = state.panel || panel;
+      if (!state.options.length) {
+        await sleep(180);
+        state = collectCascaderLevelOptions(panel, depth);
+      }
+      if (!state.options.length) {
+        await closeSelectLikePanel(buttonEl);
+        return { ok: false, reason: `级联第${depth + 1}级无可选项`, selectedText: readCascaderDisplayPaths(buttonEl, field).join('、'), targetMatched: false };
+      }
+
+      const targetPart = targetParts[depth] || '';
+      const parentOptions = state.options.filter((option) => isCascadeParentItem(option));
+      const leafOptions = state.options.filter((option) => !isCascadeParentItem(option));
+      let picked = null;
+      if (targetPart) {
+        const levelAliases = cascadeLevelAliases(targetPart, depth);
+        picked = chooseOption(state.options, targetPart, levelAliases);
+        if (!picked && strictTarget) {
+          await closeSelectLikePanel(buttonEl);
+          return { ok: false, reason: `级联第${depth + 1}级未找到目标“${targetPart}”`, selectedText: readCascaderDisplayPaths(buttonEl, field).join('、'), targetMatched: false };
+        }
+      }
+      if (!picked) {
+        picked = pickFallbackOption(parentOptions.length ? parentOptions : leafOptions);
+      }
+      if (!picked) {
+        await closeSelectLikePanel(buttonEl);
+        return { ok: false, reason: `级联第${depth + 1}级未找到可用项`, selectedText: readCascaderDisplayPaths(buttonEl, field).join('、'), targetMatched: false };
+      }
+
+      const parentItem = isCascadeParentItem(picked);
+      if (parentItem) {
+        if (strictTarget && depth >= targetParts.length - 1) {
+          await closeSelectLikePanel(buttonEl);
+          return { ok: false, reason: '目标级联路径停在父节点，未指定叶子项', selectedText: readCascaderDisplayPaths(buttonEl, field).join('、'), targetMatched: false };
+        }
+        const beforeSignature = cascaderLevelSignature(state);
+        if (isMobileRuntimeCascaderItem(picked)) {
+          const actionNode = resolveRuntimeCascaderActionNode(picked);
+          if (!(actionNode instanceof HTMLElement)) {
+            await closeSelectLikePanel(buttonEl);
+            return { ok: false, reason: `级联第${depth + 1}级导航按钮不可用`, selectedText: readCascaderDisplayPaths(buttonEl, field).join('、'), targetMatched: false };
+          }
+          fireOptionClick(actionNode);
+        } else {
+          hoverRuntimeCascaderParent(picked);
+        }
+        const nextState = await waitForCascaderLevelChange(panel, depth + 1, beforeSignature, 1800);
+        panel = nextState.panel || panel;
+        if (!nextState.options.length || cascaderLevelSignature(nextState) === beforeSignature) {
+          await closeSelectLikePanel(buttonEl);
+          return { ok: false, reason: `级联第${depth + 2}级未展开`, selectedText: readCascaderDisplayPaths(buttonEl, field).join('、'), targetMatched: false };
+        }
+        continue;
+      }
+
+      if (strictTarget && depth !== targetParts.length - 1) {
+        await closeSelectLikePanel(buttonEl);
+        return { ok: false, reason: `级联路径在第${depth + 1}级提前到达叶子`, selectedText: readCascaderDisplayPaths(buttonEl, field).join('、'), targetMatched: false };
+      }
+      const actionNode = resolveRuntimeCascaderActionNode(picked);
+      if (!(actionNode instanceof HTMLElement)) {
+        await closeSelectLikePanel(buttonEl);
+        return { ok: false, reason: '级联叶子项不可点击', selectedText: readCascaderDisplayPaths(buttonEl, field).join('、'), targetMatched: false };
+      }
+      fireOptionClick(actionNode);
+
+      const startedAt = Date.now();
+      let displayPaths = readCascaderDisplayPaths(buttonEl, field);
+      while (Date.now() - startedAt < 1200) {
+        const matched = strictTarget
+          ? displayPaths.some((display) => cascaderPathMatches(display, targetParts))
+          : displayPaths.length > beforePaths.length || (displayPaths.length > 0 && beforePaths.length === 0);
+        if (matched) {
+          await closeSelectLikePanel(buttonEl);
+          return { ok: true, reason: '级联已真实选择叶子路径', selectedText: displayPaths.join('、'), targetMatched: true };
+        }
+        await sleep(80);
+        displayPaths = readCascaderDisplayPaths(buttonEl, field);
+      }
+      await closeSelectLikePanel(buttonEl);
+      return { ok: false, reason: '级联叶子点击后展示路径未更新', selectedText: displayPaths.join('、'), targetMatched: false };
+    }
+
+    await closeSelectLikePanel(buttonEl);
+    return { ok: false, reason: '级联未到达可选择的叶子项', selectedText: readCascaderDisplayPaths(buttonEl, field).join('、'), targetMatched: false };
+  }
+
+  async function selectExplicitCascader(buttonEl, value = null, field = null, settings = {}) {
+    const multiSelect = isMultiSelectField(field, buttonEl);
+    const rawPaths = splitCascaderValuePaths(value, multiSelect);
+    const paths = multiSelect ? rawPaths : rawPaths.slice(0, 1);
+    let selectedCount = 0;
+    for (const parts of paths.length ? paths : [[]]) {
+      const strictTarget = !isSyntheticCascaderPath(parts);
+      const result = await selectExplicitCascaderPath(buttonEl, parts, strictTarget, settings, field);
+      if (!result.ok) return result;
+      selectedCount += 1;
+    }
+    const displayPaths = readCascaderDisplayPaths(buttonEl, field);
+    const expectedCount = Math.max(1, paths.length);
+    if (!displayPaths.length || (multiSelect && displayPaths.length < expectedCount)) {
+      return { ok: false, reason: `级联真实选择数量不足(${displayPaths.length}/${expectedCount})`, selectedText: displayPaths.join('、'), targetMatched: false };
+    }
+    return {
+      ok: selectedCount === expectedCount,
+      reason: multiSelect ? `多选级联已真实选择 ${selectedCount} 条路径` : '级联已真实选择完整路径',
+      selectedText: displayPaths.join('、'),
+      targetMatched: true
+    };
+  }
+
   function likelyCascadeField(field = {}) {
     const hint = normText(`${field.label || ''} ${field.placeholder || ''} ${field.context || ''} ${field.selector || ''}`);
     return /(地区|地區|区域|區域|省|市|区|縣|县|地址|address|cascader|级联|聯動)/i.test(hint);
@@ -2055,18 +2445,29 @@
     } catch {
       // ignore
     }
+    if (isExplicitCascaderField(field, buttonEl)) {
+      return selectExplicitCascader(buttonEl, targetText, field, settings);
+    }
     if (isMultiSelectField(field, buttonEl)) {
       return selectMultiComboboxOptions(buttonEl, targetText, field, settings);
     }
 
     const beforePanels = new Set(collectOpenPanels());
     const panelId = buttonEl.getAttribute('aria-controls') || buttonEl.getAttribute('aria-owns') || '';
-    const aliases = buildComboboxAliases(field, targetText);
+    const addressTargetAliases = Array.isArray(field?.meta?.addressTargetAliases)
+      ? field.meta.addressTargetAliases.map((item) => normText(item)).filter(Boolean)
+      : [];
+    const aliases = Array.from(new Set([...buildComboboxAliases(field, targetText), ...addressTargetAliases]));
     const forceSimpleCombobox = field?.meta?.addressComboLevel === true;
     const addressComboIndex = Number(field?.meta?.addressComboIndex ?? -1);
+    const strictAddressTarget = forceSimpleCombobox && field?.meta?.addressStrictTarget === true && !!normText(targetText);
+    const addressTargets = Array.from(new Set([targetText, ...addressTargetAliases].map((item) => normText(item)).filter(Boolean)));
+    const reselectAddressTarget = strictAddressTarget && field?.meta?.addressReselectTarget === true;
     const beforeText = readSelectLikeDisplayText(buttonEl);
-    const forceRefresh = field?.meta?.addressForceRefresh === true;
-    if (targetText && matchesDisplayText(beforeText, [targetText, ...aliases]) && !(forceSimpleCombobox && addressComboIndex >= 0 && addressComboIndex < 2)) {
+    const beforeTargetMatched = strictAddressTarget
+      ? matchesAddressTargetText(beforeText, addressTargets)
+      : matchesDisplayText(beforeText, [targetText, ...aliases]);
+    if (targetText && beforeTargetMatched && !reselectAddressTarget) {
       return { ok: true, reason: '下拉项已是目标值', selectedText: beforeText, targetMatched: true };
     }
     if (
@@ -2089,7 +2490,7 @@
       : 960;
     const { panel, options } = await waitForPanelOptions(buttonEl, beforePanels, panelId, addressPanelTimeout);
     if (!panel && !options.length) {
-      if (forceSimpleCombobox && beforeText && !isPlaceholderDisplayText(beforeText)) {
+      if (forceSimpleCombobox && !strictAddressTarget && beforeText && !isPlaceholderDisplayText(beforeText)) {
         return { ok: true, reason: '地址下拉已有有效值，保持不变', selectedText: beforeText, targetMatched: !targetText };
       }
       return { ok: false, reason: '未打开下拉面板', selectedText: '' };
@@ -2109,17 +2510,12 @@
       return { ok: false, reason: '下拉面板无可选项', selectedText: '' };
     }
 
-    let picked = chooseOption(clickableOptions, targetText, aliases);
-    if (forceRefresh && targetText && matchesDisplayText(beforeText, [targetText, ...aliases])) {
-      const different = clickableOptions.find((option) => {
-        const text = normText(option?.text || option?.value || option?.node?.textContent || '');
-        return text && !isPlaceholderDisplayText(text) && !matchesDisplayText(text, [targetText, ...aliases]);
-      });
-      if (different) picked = different;
-    }
-    picked = picked || pickAddressFallbackOption(clickableOptions, field);
+    let picked = strictAddressTarget
+      ? chooseStrictAddressOption(clickableOptions, addressTargets)
+      : chooseOption(clickableOptions, targetText, aliases);
+    if (!picked && !strictAddressTarget) picked = pickAddressFallbackOption(clickableOptions, field);
     if (!picked) {
-      return { ok: false, reason: '未找到可点击选项', selectedText: '' };
+      return { ok: false, reason: strictAddressTarget ? `未找到目标地址选项“${addressTargets.join(' / ')}”` : '未找到可点击选项', selectedText: beforeText };
     }
 
     fireOptionClick(picked.node);
@@ -2132,8 +2528,14 @@
     if (!selectedText || isPlaceholderDisplayText(selectedText)) {
       return { ok: false, reason: '单次点击后展示值未更新', selectedText };
     }
-    if (targetText && matchesDisplayText(selectedText, [targetText, ...aliases])) {
+    const selectedTargetMatched = strictAddressTarget
+      ? matchesAddressTargetText(selectedText, addressTargets)
+      : matchesDisplayText(selectedText, [targetText, ...aliases]);
+    if (targetText && selectedTargetMatched) {
       return { ok: true, reason: '单次点击命中下拉选项', selectedText, targetMatched: true };
+    }
+    if (strictAddressTarget) {
+      return { ok: false, reason: `地址下拉未命中目标“${addressTargets.join(' / ')}”`, selectedText, targetMatched: false };
     }
     if (hadValidBefore && (!targetText || (!forceSimpleCombobox && !changed))) {
       return {
@@ -2438,14 +2840,19 @@
     return latest;
   }
 
-  async function selectNativeSelectOption(selectEl, targetText = '') {
+  async function selectNativeSelectOption(selectEl, targetText = '', targetAliases = [], strictTarget = false) {
     if (!(selectEl instanceof HTMLSelectElement)) {
       return { ok: false, reason: '原生下拉不存在', selectedText: '' };
     }
     const beforeText = normText(selectEl.options?.[selectEl.selectedIndex]?.textContent || selectEl.value || '');
     const options = await waitNativeSelectOptions(selectEl, targetText || '', 1600);
-    const targetOption = chooseNativeSelectOption(options, targetText || '');
-    if (!targetOption) return { ok: false, reason: '原生下拉无可选项', selectedText: beforeText };
+    const targets = Array.from(new Set([targetText, ...targetAliases].map((item) => normText(item)).filter(Boolean)));
+    const targetOption = strictTarget
+      ? options.find((option) => matchesAddressTargetText(option.textContent || option.value || '', targets))
+      : chooseNativeSelectOption(options, targetText || '');
+    if (!targetOption) {
+      return { ok: false, reason: strictTarget ? `原生下拉未找到目标“${targets.join(' / ')}”` : '原生下拉无可选项', selectedText: beforeText };
+    }
 
     selectEl.value = targetOption.value;
     selectEl.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2457,8 +2864,14 @@
     if (!selectedText || isPlaceholderDisplayText(selectedText)) {
       return { ok: false, reason: '原生下拉选择后仍为空', selectedText };
     }
-    if (targetText && matchesDisplayText(selectedText, [targetText])) {
+    const targetMatched = strictTarget
+      ? matchesAddressTargetText(selectedText, targets)
+      : matchesDisplayText(selectedText, [targetText]);
+    if (targetText && targetMatched) {
       return { ok: true, reason: '原生下拉命中目标值', selectedText, targetMatched: true };
+    }
+    if (strictTarget) {
+      return { ok: false, reason: `原生地址下拉未命中目标“${targets.join(' / ')}”`, selectedText, targetMatched: false };
     }
     if (!targetText || normalizeChoiceText(selectedText) !== normalizeChoiceText(beforeText || '')) {
       return { ok: true, reason: targetText ? '原生下拉已选择兜底可用项' : '原生下拉已随机选择可用项', selectedText, targetMatched: !targetText };
@@ -2466,10 +2879,11 @@
     return { ok: false, reason: '原生下拉选择后未变化', selectedText };
   }
 
-  async function fillAddressCombobox(control, targetText = '', field = null, settings = {}, index = 0) {
+  async function fillAddressCombobox(control, targetText = '', field = null, settings = {}, index = 0, targetAliases = [], reselectTarget = false) {
     const readyControl = await waitForAddressControlReady(control, 1800);
+    const strictTarget = !!normText(targetText);
     if (readyControl instanceof HTMLSelectElement) {
-      return selectNativeSelectOption(readyControl, targetText);
+      return selectNativeSelectOption(readyControl, targetText, targetAliases, strictTarget);
     }
     const triggerNode = resolveSelectTriggerNode(readyControl);
     if (isControlDisabledLike(triggerNode)) {
@@ -2483,23 +2897,27 @@
             ...(field.meta || {}),
             addressComboLevel: true,
             addressComboIndex: index,
+            addressStrictTarget: strictTarget,
+            addressTargetAliases: targetAliases,
+            addressReselectTarget: reselectTarget,
             selectLike: true
           }
         }
       : field;
     const result = await selectComboboxOption(triggerNode, targetText, comboField, settings);
-    if (!result?.ok && targetText && setButtonDisplayText(triggerNode, targetText)) {
-      return { ok: true, reason: '地址下拉已写入展示值', selectedText: targetText, targetMatched: true };
-    }
     return result;
   }
 
-  async function waitForAddressCombobox(field, index, root, strictScope, usedNodes, timeout = 3200) {
+  async function waitForAddressCombobox(field, index, root, strictScope, usedNodes, timeout = 3200, allowDisabled = false) {
     const startedAt = Date.now();
     let latest = null;
     while (Date.now() - startedAt < Math.max(240, Number(timeout || 0))) {
       latest = findAddressCombobox(field, index, root, strictScope, usedNodes);
-      if (latest instanceof Element && visible(latest) && !isControlDisabledLike(resolveSelectTriggerNode(latest))) {
+      if (
+        latest instanceof Element &&
+        visible(latest) &&
+        (allowDisabled || !isControlDisabledLike(resolveSelectTriggerNode(latest)))
+      ) {
         return latest;
       }
       await sleep(120);
@@ -2594,40 +3012,55 @@
     const expectedComboCount = Math.max(inferAddressComboExpectedCount(field), domIds.length, selectors.length, roles.length, labels.length);
     const totalComboSlots = Math.max(expectedComboCount, 3);
     const attemptedSlots = new Set();
-    const updateAddressFromSelection = (normalizedSlot, targetText, selectResult, button) => {
-      const selectedText = normText(selectResult?.selectedText || readAddressComboDisplay(button));
-      const targetMatched = !targetText || selectResult?.targetMatched === true || matchesDisplayText(selectedText, [targetText]);
-      if (!selectedText || isPlaceholderDisplayText(selectedText)) return;
-      if (normalizedSlot === 'province') {
-        addr.province = selectedText;
-        if (!targetMatched) {
-          addr.city = '';
-          addr.district = '';
-        }
-      } else if (normalizedSlot === 'city') {
-        addr.city = selectedText;
-        if (!targetMatched) {
-          addr.district = '';
-        }
-      } else if (normalizedSlot === 'district') {
-        addr.district = selectedText;
-      }
+    const addressSlotAt = (i) => {
+      const slotHint = roles[i] || labels[i] || fallbackSlots[i] || '';
+      return inferAddressSlot(slotHint, fallbackSlots[i] || '');
     };
-    const fillAddressLevel = async (i, button, forceRefresh = false) => {
+    const addressTargetsAt = (i) => resolveAddressLevelTargets(addr, addressSlotAt(i));
+    const addressLevelSatisfied = (button, i) => {
+      if (!(button instanceof Element)) return false;
+      const display = readAddressComboDisplay(button);
+      const targets = addressTargetsAt(i);
+      if (targets.length) return matchesAddressTargetText(display, targets);
+      return isAddressComboFilled(button);
+    };
+    const isIgnorableAddressEmptyLevel = (button, i, provinceText = '') => {
+      if (i <= 0 || isAddressComboFilled(button)) return false;
+      if (isHmtAddressText(provinceText)) return true;
+      return addressTargetsAt(i).length === 0 &&
+        button instanceof Element &&
+        isControlDisabledLike(resolveSelectTriggerNode(button));
+    };
+    const fillAddressLevel = async (i, button, reselectTarget = false) => {
       const slotHint = roles[i] || labels[i] || fallbackSlots[i] || '';
       const normalizedSlot = inferAddressSlot(slotHint, fallbackSlots[i] || '');
-      const targetText = pickAddressValue(addr, normalizedSlot || slotHint, '');
+      const targetCandidates = resolveAddressLevelTargets(addr, normalizedSlot || slotHint);
+      const targetText = targetCandidates[0] || '';
       const shouldFillCombo = !!targetText || /^(province|city|district)$/.test(normalizedSlot || '') || i < 3;
       if (!shouldFillCombo) return false;
+      if (
+        !targetCandidates.length &&
+        (isHmtAddressText(addr.province) || isControlDisabledLike(resolveSelectTriggerNode(button)))
+      ) return false;
       attemptedSlots.add(i);
       comboAttempted += 1;
-      const comboField = forceRefresh
-        ? { ...field, meta: { ...(field.meta || {}), addressForceRefresh: true } }
-        : field;
-      const selectResult = await fillAddressCombobox(button, targetText, comboField, settings, i);
+      const selectResult = await fillAddressCombobox(
+        button,
+        targetText,
+        field,
+        settings,
+        i,
+        targetCandidates.slice(1),
+        reselectTarget
+      );
       if (selectResult.ok) {
+        const selectedText = normText(selectResult.selectedText || readAddressComboDisplay(button));
+        const targetMatched = !targetCandidates.length || matchesAddressTargetText(selectedText, targetCandidates);
+        if (!targetMatched) {
+          comboErrors.push(`${normalizedSlot || slotHint || `slot-${i + 1}`}: 已选值“${selectedText}”未命中目标“${targetCandidates.join(' / ')}”`);
+          return false;
+        }
         comboApplied += 1;
-        updateAddressFromSelection(normalizedSlot, targetText, selectResult, button);
         const triggerNode = resolveSelectTriggerNode(button);
         triggerNode?.dispatchEvent?.(new Event('input', { bubbles: true }));
         triggerNode?.dispatchEvent?.(new Event('change', { bubbles: true }));
@@ -2638,7 +3071,15 @@
       return false;
     };
     for (let i = 0; i < totalComboSlots; i += 1) {
-      const button = await waitForAddressCombobox(field, i, root, strictScope, usedNodes, i === 0 ? 1200 : (i === 1 ? 4200 : 6500));
+      const button = await waitForAddressCombobox(
+        field,
+        i,
+        root,
+        strictScope,
+        usedNodes,
+        i === 0 ? 1200 : (i === 1 ? 4200 : 6500),
+        addressTargetsAt(i).length === 0
+      );
       if (!button) continue;
       usedNodes.add(button);
       await fillAddressLevel(i, button);
@@ -2649,21 +3090,35 @@
       await sleep(pass === 0 ? 700 : (pass === 1 ? 1200 : 1800));
       const requiredComboCount = Math.max(expectedComboCount, attemptedSlots.size);
       const currentCombos = collectAddressComboNodes(field, root, strictScope, Math.max(requiredComboCount, totalComboSlots));
-      const selectedComboCount = currentCombos.filter(isAddressComboFilled).length;
-      if (requiredComboCount > 0 && selectedComboCount >= requiredComboCount) break;
+      const provinceText = readAddressComboDisplay(currentCombos[0]);
+      const levelsSatisfied = Array.from({ length: requiredComboCount }, (_, index) => {
+        const button = currentCombos[index];
+        if (addressLevelSatisfied(button, index)) return true;
+        return isIgnorableAddressEmptyLevel(button, index, provinceText);
+      });
+      if (requiredComboCount > 0 && levelsSatisfied.every(Boolean)) break;
 
       const retryUsedNodes = new Set();
-      const retryCombos = collectAddressComboNodes(field, root, strictScope, totalComboSlots);
       for (let i = 0; i < totalComboSlots; i += 1) {
-        const button = await waitForAddressCombobox(field, i, root, strictScope, retryUsedNodes, i === 0 ? 700 : (i === 1 ? 4200 : 6500));
+        const button = await waitForAddressCombobox(
+          field,
+          i,
+          root,
+          strictScope,
+          retryUsedNodes,
+          i === 0 ? 700 : (i === 1 ? 4200 : 6500),
+          addressTargetsAt(i).length === 0
+        );
         if (!button) continue;
         retryUsedNodes.add(button);
-        const laterMissing = retryCombos
+        const latestCombos = collectAddressComboNodes(field, root, strictScope, totalComboSlots);
+        const laterMissing = latestCombos
           .slice(i + 1)
-          .some((node) => node instanceof Element && !isAddressComboFilled(node) && !isAddressComboDisabledEmpty(node));
-        if (isAddressComboFilled(button) && !laterMissing) continue;
+          .some((node, offset) => node instanceof Element && !addressLevelSatisfied(node, i + offset + 1));
+        const currentSatisfied = addressLevelSatisfied(button, i);
+        if (currentSatisfied && !laterMissing) continue;
         if (isControlDisabledLike(resolveSelectTriggerNode(button))) continue;
-        await fillAddressLevel(i, button, laterMissing && i < 2);
+        await fillAddressLevel(i, button, currentSatisfied && laterMissing && i < 2);
         await sleep(i === 0 ? 900 : (i === 1 ? 1300 : 320));
       }
     }
@@ -2684,17 +3139,25 @@
 
     const finalRequiredComboCount = Math.max(expectedComboCount, attemptedSlots.size);
     const finalComboNodes = collectAddressComboNodes(field, root, strictScope, Math.max(finalRequiredComboCount, totalComboSlots));
-    const finalSelectedComboCount = finalComboNodes.filter(isAddressComboFilled).length;
-    const finalDisabledEmptyCount = countIgnorableAddressEmptyCombos(finalComboNodes);
-    const finalComboStates = finalComboNodes.map((node, index) => ({
-      index,
-      display: readAddressComboDisplay(node),
-      disabled: isControlDisabledLike(resolveSelectTriggerNode(node)),
-      filled: isAddressComboFilled(node)
-    }));
-    const finalComboDenominator = finalRequiredComboCount
-      ? Math.max(0, finalRequiredComboCount - finalDisabledEmptyCount)
-      : Math.max(0, finalComboNodes.length - finalDisabledEmptyCount) || comboAttempted;
+    const finalComboDenominator = finalRequiredComboCount || finalComboNodes.length || comboAttempted;
+    const finalProvinceText = readAddressComboDisplay(finalComboNodes[0]);
+    const finalComboStates = Array.from(
+      { length: Math.max(finalComboDenominator, finalComboNodes.length) },
+      (_, index) => {
+        const node = finalComboNodes[index] || null;
+        const ignored = isIgnorableAddressEmptyLevel(node, index, finalProvinceText);
+        return {
+          index,
+          display: readAddressComboDisplay(node),
+          disabled: isControlDisabledLike(resolveSelectTriggerNode(node)),
+          filled: isAddressComboFilled(node),
+          expected: addressTargetsAt(index),
+          ignored,
+          matched: addressLevelSatisfied(node, index) || ignored
+        };
+      }
+    );
+    const finalSelectedComboCount = finalComboStates.filter((state) => state.matched).length;
     if (finalComboDenominator > 0) {
       if (finalSelectedComboCount >= finalComboDenominator) {
         return buildFillResult(true, detailApplied ? `地址下拉与详细信息已填充(${finalSelectedComboCount}/${finalComboDenominator})` : `地址下拉已填充(${finalSelectedComboCount}/${finalComboDenominator})`, { target: detailEl || null, comboStates: finalComboStates });
@@ -2704,15 +3167,11 @@
       }
     }
 
-    if ((comboAttempted > 0 && comboApplied === comboAttempted) || (detailApplied && comboAttempted === 0)) {
-      return buildFillResult(true, detailApplied ? `地址下拉与详细信息已填充(${comboApplied}/${comboAttempted})` : `地址下拉已填充(${comboApplied}/${comboAttempted})`, { target: detailEl || null });
-    }
-    if (comboAttempted > 0 && comboApplied > 0) {
-      return buildFillResult(false, comboErrors[0] || `地址级联未完整填充(${comboApplied}/${comboAttempted})`, { target: detailEl || null });
-    }
-
     if (comboAttempted === 0 && !detailEl) {
       return buildFillResult(false, '地址组件未定位到下拉或详细地址输入框');
+    }
+    if (comboAttempted === 0 && detailApplied) {
+      return buildFillResult(true, '详细地址已填充', { target: detailEl });
     }
     if (!detailText) {
       return buildFillResult(false, '地址值为空，未执行填充');
@@ -3041,24 +3500,6 @@
     return buildFillResult(applied > 0, applied > 0 ? `排序题已选择 ${applied} 项` : '排序题点击未生效', { target: ordered[0] || null });
   }
 
-  function setButtonDisplayText(button, text = '') {
-    if (!(button instanceof HTMLElement)) return false;
-    const value = normText(text);
-    if (!value) return false;
-    const textNode = Array.from(button.querySelectorAll('span, div')).find((node) => {
-      if (!(node instanceof HTMLElement)) return false;
-      if (!visible(node)) return false;
-      if (node.querySelector('svg')) return false;
-      return normText(node.textContent || '') || node.hasAttribute('data-placeholder');
-    }) || button;
-    textNode.textContent = value;
-    button.setAttribute('data-formpilot-v2-widget-filled', value);
-    button.dispatchEvent(new Event('input', { bubbles: true }));
-    button.dispatchEvent(new Event('change', { bubbles: true }));
-    button.dispatchEvent(new Event('blur', { bubbles: true }));
-    return normText(button.textContent || '').includes(value);
-  }
-
   function parseDatePartsForWidget(value = '', collectType = 'ymd') {
     const raw = String(value || '').trim();
     const halfYearWindow = getHalfYearDateWindow();
@@ -3156,16 +3597,11 @@
     const el = findElement(field, root, strictScope);
     if (!el) return buildFillResult(false, '级联控件未定位');
     const trigger = resolveSelectTriggerNode(el);
-    const targetText = normText(value || '') || 'defaultRegion / defaultMainland';
-    const result = await selectComboboxOption(trigger, targetText, field, settings);
+    const targetValue = value == null || (typeof value === 'string' && !normText(value))
+      ? 'defaultRegion / defaultMainland'
+      : value;
+    const result = await selectComboboxOption(trigger, targetValue, field, settings);
     if (result?.ok) return buildFillResult(true, result.reason || '级联控件已选择', { target: trigger });
-    if (/未打开下拉面板|面板未打开/.test(String(result?.reason || ''))) {
-      const displayText = formatCascaderDisplayText(targetText);
-      if (displayText && setButtonDisplayText(trigger, displayText)) {
-        trigger.setAttribute('data-formpilot-v2-cascader-static-fallback', targetText);
-        return buildFillResult(true, '级联控件静态兜底写入展示路径', { target: trigger });
-      }
-    }
     return buildFillResult(false, result?.reason || '级联控件选择失败', { target: trigger });
   }
 
@@ -4059,6 +4495,189 @@
     return buildFillResult(false, '未找到日期面板可点击项', { target });
   }
 
+  function buildSignatureStrokePaths(seed = '') {
+    let hash = 2166136261;
+    for (const char of String(seed || 'FillForm')) {
+      hash ^= char.charCodeAt(0);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    const jitter = (index, range) => {
+      const shifted = (hash >>> ((index * 5) % 24)) & 31;
+      return (shifted / 31 - 0.5) * range;
+    };
+    const clamp = (value) => Math.max(0.04, Math.min(0.96, value));
+    const paths = [
+      [[0.10, 0.58], [0.18, 0.30], [0.25, 0.64], [0.34, 0.34], [0.42, 0.61], [0.51, 0.29], [0.61, 0.57], [0.74, 0.36]],
+      [[0.16, 0.71], [0.29, 0.66], [0.43, 0.73], [0.58, 0.65], [0.78, 0.70]],
+      [[0.43, 0.49], [0.54, 0.42], [0.66, 0.51], [0.81, 0.45]]
+    ];
+    return paths.map((points, pathIndex) => points.map(([x, y], pointIndex) => [
+      clamp(x + jitter(pointIndex + pathIndex * 7, 0.026)),
+      clamp(y + jitter(pointIndex + pathIndex * 11 + 3, 0.036))
+    ]));
+  }
+
+  function collectVisibleSignatureCanvases() {
+    return Array.from(
+      document.querySelectorAll('[role="dialog"] canvas, [data-state="open"] canvas')
+    ).filter((node) => {
+      if (!(node instanceof HTMLCanvasElement) || !visible(node)) return false;
+      const rect = node.getBoundingClientRect();
+      return rect.width >= 80 && rect.height >= 60 && node.width > 0 && node.height > 0;
+    });
+  }
+
+  async function waitForSignatureCanvas(beforeCanvases = new Set(), timeout = 3200) {
+    const startedAt = Date.now();
+    let fallback = null;
+    while (Date.now() - startedAt < timeout) {
+      const canvases = collectVisibleSignatureCanvases();
+      fallback = canvases[canvases.length - 1] || fallback;
+      const opened = canvases.find((canvas) => !beforeCanvases.has(canvas));
+      if (opened) return opened;
+      if (fallback && beforeCanvases.size === 0) return fallback;
+      await sleep(80);
+    }
+    return fallback;
+  }
+
+  function dispatchSignatureMouseEvent(canvas, type, point, buttons = 0) {
+    const view = canvas?.ownerDocument?.defaultView || window;
+    const MouseEventCtor = view?.MouseEvent || window.MouseEvent;
+    if (typeof MouseEventCtor !== 'function') return false;
+    return canvas.dispatchEvent(new MouseEventCtor(type, {
+      bubbles: true,
+      cancelable: true,
+      view,
+      button: 0,
+      buttons,
+      clientX: point.x,
+      clientY: point.y
+    }));
+  }
+
+  function drawCustomRendererSignature(canvas, seed = '') {
+    if (!(canvas instanceof HTMLCanvasElement)) return false;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width < 80 || rect.height < 60 || canvas.width <= 0 || canvas.height <= 0) return false;
+    const paths = buildSignatureStrokePaths(seed);
+    for (const path of paths) {
+      const points = path.map(([x, y]) => ({
+        x: rect.left + x * rect.width,
+        y: rect.top + y * rect.height
+      }));
+      if (!points.length) continue;
+      dispatchSignatureMouseEvent(canvas, 'mousedown', points[0], 1);
+      for (const point of points.slice(1)) {
+        dispatchSignatureMouseEvent(canvas, 'mousemove', point, 1);
+      }
+      dispatchSignatureMouseEvent(canvas, 'mouseup', points[points.length - 1], 0);
+    }
+    try {
+      return canvas.toDataURL('image/png').length > 128;
+    } catch {
+      return true;
+    }
+  }
+
+  function findSignatureDialogScope(canvas) {
+    if (!(canvas instanceof Element)) return null;
+    return canvas.closest('[role="dialog"], [data-state="open"]') || canvas.parentElement;
+  }
+
+  function findSignatureConfirmButton(canvas) {
+    const scope = findSignatureDialogScope(canvas);
+    if (!(scope instanceof Element)) return null;
+    return Array.from(scope.querySelectorAll('button, [role="button"]')).find((node) => {
+      if (!(node instanceof HTMLElement) || !visible(node) || node.disabled) return false;
+      const text = normText(node.textContent || node.getAttribute('aria-label') || '');
+      return /^(确定|確定|确认|確認|完成|完成签名|完成簽名|ok|confirm|done)$/i.test(text);
+    }) || null;
+  }
+
+  function findSignatureTrigger(container, preferred = null) {
+    if (preferred instanceof HTMLElement && visible(preferred) && !preferred.disabled) return preferred;
+    if (!(container instanceof Element)) return null;
+    const explicit = Array.from(
+      container.querySelectorAll('.fb-signature-empty-trigger, .fb-signature-filled-surface button')
+    ).find((node) => node instanceof HTMLElement && visible(node) && !node.disabled);
+    if (explicit instanceof HTMLElement) return explicit;
+    return Array.from(container.querySelectorAll('button[type="button"], button:not([type])')).find((node) => {
+      if (!(node instanceof HTMLElement) || !visible(node) || node.disabled) return false;
+      return !!node.querySelector('.lucide-pen-line, .lucide-eraser, [class*="signature"]');
+    }) || null;
+  }
+
+  function isCustomRendererSignatureComplete(container) {
+    if (!(container instanceof Element)) return false;
+    if (container.querySelector('.fb-signature-filled-surface')) return true;
+    const triggers = Array.from(container.querySelectorAll('button[type="button"], button:not([type])'));
+    return triggers.some((trigger) => {
+      const hasPreview = !!trigger.querySelector(
+        'img[src][alt*="签"], img[src][alt*="簽"], img[src][alt*="signature" i], [role="img"][aria-label*="签"], [role="img"][aria-label*="簽"], [role="img"][aria-label*="signature" i]'
+      );
+      const hasRewrite = !!trigger.querySelector('.lucide-eraser') ||
+        /(重写|重寫|重签|重簽|重新签名|重新簽名|rewrite)/i.test(normText(trigger.textContent || ''));
+      return hasPreview && hasRewrite;
+    });
+  }
+
+  function readSignatureValidationError(container) {
+    if (!(container instanceof Element)) return '';
+    const message = Array.from(
+      container.querySelectorAll('[role="alert"], .fb-runtime-field-error, .error-message, .invalid-feedback')
+    ).find((node) => node instanceof Element && visible(node) && normText(node.textContent || ''));
+    return normText(message?.textContent || '');
+  }
+
+  async function fillCustomRendererSignature(field, value, root, strictScope, settings = {}) {
+    const container = findWidgetContainer(field, root, strictScope);
+    if (!(container instanceof Element)) return buildFillResult(false, '签名题目未定位');
+    if (isCustomRendererSignatureComplete(container)) {
+      return buildFillResult(true, '签名已存在', { target: container });
+    }
+
+    const located = findElement(field, root, strictScope);
+    const trigger = findSignatureTrigger(container, located);
+    if (!(trigger instanceof HTMLElement)) {
+      return buildFillResult(false, '签名触发按钮未定位', { target: container });
+    }
+
+    const beforeCanvases = new Set(collectVisibleSignatureCanvases());
+    trigger.click();
+    const canvas = await waitForSignatureCanvas(beforeCanvases);
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return buildFillResult(false, '签名弹窗或画布未打开', { target: trigger });
+    }
+
+    if (!drawCustomRendererSignature(canvas, value || field?.label || 'FillForm')) {
+      return buildFillResult(false, '签名笔迹写入画布失败', { target: canvas });
+    }
+    await sleep(100);
+
+    const confirm = findSignatureConfirmButton(canvas);
+    if (!(confirm instanceof HTMLElement)) {
+      return buildFillResult(false, '签名确认按钮未定位', { target: canvas });
+    }
+    confirm.click();
+
+    const uploadStarted = Date.now();
+    while (Date.now() - uploadStarted < 20000) {
+      if (isFillRunCancelled(settings)) {
+        return buildFillResult(false, '本次填充已停止', { target: trigger });
+      }
+      if (isCustomRendererSignatureComplete(container)) {
+        return buildFillResult(true, '签名已绘制并上传完成', { target: container });
+      }
+      const validationError = readSignatureValidationError(container);
+      if (validationError) {
+        return buildFillResult(false, validationError, { target: container });
+      }
+      await sleep(180);
+    }
+    return buildFillResult(false, '签名确认后未取得上传结果', { target: trigger });
+  }
+
   async function fillSingleField(field, value, root, strictScope, settings, context = {}) {
     if (field?.meta?.adapterName === 'lingxiLegacy' || field?.meta?.componentAdapter === 'lingxiLegacy') {
       const adapterResult = await window.FormPilotV2Adapters?.fillField?.(field, value, {
@@ -4082,6 +4701,7 @@
     if (field.kind === 'addressComponent') return fillAddressComponent(field, value, root, strictScope, settings);
     if (field.meta?.segmented) return fillSegmentedField(field, value, root, strictScope);
     const widget = getFieldWidget(field);
+    if (widget === 'signature') return fillCustomRendererSignature(field, value, root, strictScope, settings);
     if (widget === 'birthday') return fillBirthdayField(field, value, root, strictScope, settings);
     if (widget === 'ranking') return fillRankingField(field, value, root, strictScope);
     if (widget === 'rating' || widget === 'nps' || widget === 'matrixchoice') {
@@ -4224,15 +4844,6 @@
     if (selectLikeTrigger) {
       const triggerNode = resolveSelectTriggerNode(el);
       const selectResult = await selectComboboxOption(triggerNode, textValue, field, settings);
-      if (!selectResult?.ok && field.kind === 'select') {
-        if (likelyCascadeField(field)) {
-          const displayText = formatCascaderDisplayText(normText(textValue) || 'defaultRegion / defaultMainland');
-          if (displayText && setButtonDisplayText(triggerNode, displayText)) {
-            triggerNode.setAttribute('data-formpilot-v2-cascader-static-fallback', normText(textValue) || 'defaultRegion / defaultMainland');
-            return buildFillResult(true, '级联控件静态兜底写入展示路径', { target: triggerNode });
-          }
-        }
-      }
       return buildFillResult(selectResult.ok, selectResult.reason, { target: triggerNode });
     }
 
@@ -4445,7 +5056,7 @@
   }
 
   function isFieldRequired(field = {}, el = null) {
-    if (field?.constraints?.required) return true;
+    if (field?.constraints?.required || field?.meta?.required === true) return true;
     if (!(el instanceof Element)) return false;
     if (el.hasAttribute('required')) return true;
     if (String(el.getAttribute('aria-required') || '').toLowerCase() === 'true') return true;
@@ -4453,7 +5064,7 @@
     if (!(container instanceof Element)) return false;
     if (
       container.querySelector(
-        '.arco-form-item-label-required-symbol, .ant-form-item-required, .el-form-item.is-required, .required, [data-required="true"]'
+        '.arco-form-item-label-required-symbol, .ant-form-item-required, .el-form-item.is-required, .form-field-label__text--required, .required, [data-required="true"]'
       )
     ) {
       return true;
@@ -4545,6 +5156,19 @@
     }
 
     const widget = getFieldWidget(field);
+    if (widget === 'signature') {
+      const container = findWidgetContainer(field, root, strictScope);
+      const validationError = readSignatureValidationError(container);
+      const filled = isCustomRendererSignatureComplete(container);
+      const required = isFieldRequired(field, container);
+      const ok = filled || (!required && shouldAllowOptionalEmpty(settings));
+      return {
+        id: field.id,
+        kind: field.kind,
+        ok: !validationError && ok,
+        reason: validationError || (filled ? '签名已完成' : (ok ? '可选签名未填写' : '签名未完成'))
+      };
+    }
     if (widget === 'rating' || widget === 'nps' || widget === 'matrixchoice') {
       const selector = widget === 'nps'
         ? '.nps-scale__score-btn'
@@ -4597,16 +5221,13 @@
 
     if (widget === 'cascader') {
       const el = findElement(field, root, strictScope);
-      const display = readSelectLikeDisplayText(el) || readSimpleValue(el);
-      const staticFallback = el?.getAttribute?.('data-formpilot-v2-cascader-static-fallback') ||
-        queryOne(root || document, '[data-formpilot-v2-cascader-static-fallback]')?.getAttribute?.('data-formpilot-v2-cascader-static-fallback') ||
-        '';
-      const ok = (!!display && !isPlaceholderDisplayText(display) && !isGenericOptionDisplayText(display)) || !!staticFallback;
+      const displayPaths = readCascaderDisplayPaths(el, field);
+      const ok = displayPaths.length > 0;
       return {
         id: field.id,
         kind: field.kind,
         ok,
-        reason: ok ? '级联控件已选择' : '级联控件未选择'
+        reason: ok ? '级联控件已真实选择' : '级联控件未选择'
       };
     }
 
@@ -5130,6 +5751,7 @@
     fillFields,
     verifyFieldsCompletion,
     __test: {
+      buildSignatureStrokePaths,
       resolveDateFieldMode,
       normalizeTimeText
     },

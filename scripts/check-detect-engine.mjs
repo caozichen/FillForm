@@ -173,8 +173,57 @@ const fixtures = [
     score: 0.8,
     confidence: 0.8,
     meta: { locatorStability: 1 }
+  },
+  {
+    id: 'custom-renderer-signature',
+    kind: 'text',
+    label: '签名',
+    placeholder: '请在此处签名',
+    context: '签名 请在此处签名',
+    selector: '#custom-renderer-signature',
+    domId: 'custom-renderer-signature',
+    score: 0.92,
+    confidence: 0.92,
+    constraints: { required: true },
+    meta: {
+      widget: 'signature',
+      signature: true,
+      required: true,
+      customRendererAdapter: 'fb-form-renderer',
+      locatorStability: 1
+    }
   }
 ];
+
+const nameWithPollutedContextFixture = {
+  id: 'name-with-form-email-context',
+  kind: 'fullName',
+  label: '姓名',
+  placeholder: '请输入姓名',
+  context: '姓名 请输入姓名 联系方式 邮箱 请输入电子邮件',
+  selector: '#polluted-context-name-input',
+  domId: 'polluted-context-name-input',
+  score: 0.92,
+  confidence: 0.92,
+  source: 'scan:custom-renderer',
+  meta: {
+    customRendererAdapter: 'fb-form-renderer',
+    locatorStability: 1
+  }
+};
+
+const contextOnlyEmailFixture = {
+  id: 'context-only-email',
+  kind: 'text',
+  label: '',
+  placeholder: '',
+  context: '请填写邮箱',
+  selector: '#context-only-email-input',
+  domId: 'context-only-email-input',
+  score: 0.72,
+  confidence: 0.72,
+  meta: { locatorStability: 1 }
+};
 
 const engines = [
   { name: 'legacy/background', normalize: normalizeLegacy, prepare: prepareLegacy },
@@ -200,18 +249,78 @@ for (const engine of engines) {
   assert.equal(byId.get('candidate-code')?.kind, 'text', `${engine.name}: Candidate 被誤判為日期`);
   assert.equal(byId.get('update-notes')?.kind, 'text', `${engine.name}: Update 被誤判為日期`);
   assert.equal(byId.get('start-date-token')?.kind, 'date', `${engine.name}: start_date 未被識別為日期`);
+  assert.equal(byId.get('custom-renderer-signature')?.kind, 'text', `${engine.name}: 簽名字段基礎類型被改寫`);
+  assert.equal(byId.get('custom-renderer-signature')?.meta?.widget, 'signature', `${engine.name}: 簽名組件標記丟失`);
+  assert.equal(byId.get('custom-renderer-signature')?.meta?.required, true, `${engine.name}: 簽名必填標記丟失`);
 
   const prepared = engine.prepare(normalized);
   const preparedIds = new Set(prepared.fields.map((field) => field.id));
   for (const fixture of fixtures) {
     assert.ok(preparedIds.has(fixture.id), `${engine.name}: ${fixture.id} 未進入填充清單`);
   }
+
+  const normalizedPollutedName = engine.normalize([structuredClone(nameWithPollutedContextFixture)]);
+  assert.equal(normalizedPollutedName.length, 1, `${engine.name}: 含整表邮箱上下文的姓名字段被丢弃`);
+  assert.equal(normalizedPollutedName[0]?.kind, 'fullName', `${engine.name}: 姓名直接语义未优先于整表邮箱上下文`);
+
+  const preparedPollutedName = engine.prepare(normalizedPollutedName);
+  assert.equal(preparedPollutedName.fields.length, 1, `${engine.name}: 含整表邮箱上下文的姓名未进入填充计划`);
+  assert.equal(preparedPollutedName.fields[0]?.kind, 'fullName', `${engine.name}: 填充计划将姓名误判为邮箱`);
+
+  const normalizedContextOnlyEmail = engine.normalize([structuredClone(contextOnlyEmailFixture)]);
+  assert.equal(normalizedContextOnlyEmail[0]?.kind, 'email', `${engine.name}: 无直接题干时未使用上下文兜底识别邮箱`);
 }
 
 globalThis.window = {};
 await import('../public/content/scan.js');
 
-const { classifyField, isDateHintText, isDatePickerClassText, inferDatePickerMode } = window.FormPilotV2Utils || {};
+const {
+  classifyField,
+  hasMultipleFieldKeyOwners,
+  inferDatePickerMode,
+  isDateHintText,
+  isDatePickerClassText
+} = window.FormPilotV2Utils || {};
+assert.equal(typeof hasMultipleFieldKeyOwners, 'function', 'scan: 题目边界判断函数未暴露');
+const createFieldOwner = (key) => ({
+  getAttribute(name) {
+    assert.equal(name, 'data-field-key');
+    return key;
+  }
+});
+const sharedFieldOwner = createFieldOwner('verification_code');
+const createOwnedInput = (owner) => ({
+  closest(selector) {
+    assert.equal(selector, '[data-field-key]');
+    return owner;
+  }
+});
+assert.equal(
+  hasMultipleFieldKeyOwners([createOwnedInput(sharedFieldOwner), createOwnedInput(sharedFieldOwner)]),
+  false,
+  'scan: 同一题目内的合法分段输入被拦截'
+);
+assert.equal(
+  hasMultipleFieldKeyOwners([
+    createOwnedInput(createFieldOwner('verification_code')),
+    createOwnedInput(createFieldOwner('verification_code'))
+  ]),
+  false,
+  'scan: 同字段键的多层包装分段输入被拦截'
+);
+assert.equal(
+  hasMultipleFieldKeyOwners([
+    createOwnedInput(createFieldOwner('username_mvlkrr')),
+    createOwnedInput(createFieldOwner('email_mvlkrr'))
+  ]),
+  true,
+  'scan: 跨多个 data-field-key 的输入未被拦截'
+);
+assert.equal(
+  hasMultipleFieldKeyOwners([createOwnedInput(null), createOwnedInput(null)]),
+  false,
+  'scan: 无 data-field-key 的原生分段组件行为被改变'
+);
 assert.equal(typeof isDateHintText, 'function', 'scan: 日期提示词判断函数未暴露');
 assert.equal(isDateHintText('Candidate code'), false, 'scan: Candidate 被误判为日期');
 assert.equal(isDateHintText('Update notes'), false, 'scan: Update 被误判为日期');
@@ -330,7 +439,18 @@ assert.match(String(birthdayMdValue), /^\d{4}-\d{2}-\d{2}$/, 'data: 月日生日
 await import('../public/content/fill.js');
 const resolveDateFieldMode = window.FormPilotV2Fill?.__test?.resolveDateFieldMode;
 const normalizeTimeText = window.FormPilotV2Fill?.__test?.normalizeTimeText;
+const buildSignatureStrokePaths = window.FormPilotV2Fill?.__test?.buildSignatureStrokePaths;
 assert.equal(typeof resolveDateFieldMode, 'function', 'fill: 時間/日期模式判斷未暴露');
+assert.equal(typeof buildSignatureStrokePaths, 'function', 'fill: 簽名筆跡生成函數未暴露');
+const signaturePaths = buildSignatureStrokePaths('王晓彤');
+assert.equal(signaturePaths.length, 3, 'fill: 簽名筆跡路徑數量異常');
+assert.ok(signaturePaths.every((path) => path.length >= 4), 'fill: 簽名筆跡路徑過短');
+assert.ok(
+  signaturePaths.flat().every(([x, y]) => x >= 0.04 && x <= 0.96 && y >= 0.04 && y <= 0.96),
+  'fill: 簽名筆跡超出畫布範圍'
+);
+assert.deepEqual(signaturePaths, buildSignatureStrokePaths('王晓彤'), 'fill: 相同簽名種子未生成穩定筆跡');
+assert.notDeepEqual(signaturePaths, buildSignatureStrokePaths('李晨宇'), 'fill: 不同簽名種子生成了完全相同筆跡');
 assert.equal(normalizeTimeText('2026-03-06'), '12:30', 'fill: 日期字符串被誤解為緊湊時間');
 assert.equal(normalizeTimeText('2030'), '20:30', 'fill: 合法緊湊時間未正常解析');
 assert.equal(
