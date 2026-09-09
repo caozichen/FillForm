@@ -495,12 +495,17 @@
               <div class="rich-text-card-head">
                 <div>
                   <div class="setting-title">富文本内容</div>
-                  <div class="setting-desc">用于富文本编辑器类字段。默认显示转换后的实际效果，开启源码后可直接维护 HTML。</div>
+                  <div class="setting-desc">每个样本独立保存，填充时随机选用。开启源码可编辑当前样本的完整 HTML，支持换行。</div>
                 </div>
                 <label class="rich-mode-toggle">
                   <span>源码</span>
                   <span class="switch"><input type="checkbox" id="testDataRichTextSourceMode" /><span class="switch-ui"></span></span>
                 </label>
+              </div>
+              <div class="rich-text-samples">
+                <select id="richTextSampleSelect" aria-label="选择富文本样本"></select>
+                <button id="richTextSampleAdd" type="button" class="btn secondary">新增样本</button>
+                <button id="richTextSampleRemove" type="button" class="btn secondary">删除当前样本</button>
               </div>
               <div class="rich-text-editor-wrap">
                 <div class="rich-text-toolbar" aria-label="富文本工具栏">

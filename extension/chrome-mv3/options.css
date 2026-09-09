@@ -984,6 +984,19 @@ textarea:focus {
   font-weight: 700;
 }
 
+.rich-text-samples {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.rich-text-samples select {
+  flex: 1;
+  min-width: 120px;
+}
+
 .decrypt-card {
   background: rgba(231, 240, 255, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.55);
@@ -1939,5 +1952,4 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
-
 

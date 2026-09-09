@@ -5,6 +5,7 @@ import {
   migrateTestDataLibraryDefaults
 } from './core/types.js';
 import { md5 } from './core/md5.js';
+import { mergeSettingsChanges } from './core/settingsMerge.js';
 import {
   buildApiExecutionRequest,
   executeApiTemplate,
@@ -67,6 +68,9 @@ const els = {
   testDataRichTextSourceMode: $('testDataRichTextSourceMode'),
   testDataRichTextColor: $('testDataRichTextColor'),
   testDataRichTextError: $('testDataRichTextError'),
+  richTextSampleSelect: $('richTextSampleSelect'),
+  richTextSampleAdd: $('richTextSampleAdd'),
+  richTextSampleRemove: $('richTextSampleRemove'),
   testDataNumber: $('testDataNumber'),
   testDataBankCardCn: $('testDataBankCardCn'),
   testDataBankCardHk: $('testDataBankCardHk'),
@@ -162,6 +166,9 @@ const state = {
   pendingProtectedTabInput: null,
   pendingMockRuleFingerprint: '',
   richTextSourceMode: false,
+  richTextPool: [],
+  richTextSampleIndex: -1,
+  savedForm: null,
   richTextSelectionRange: null
 };
 
@@ -478,10 +485,11 @@ function readVisiblePanelTabsFromForm() {
 
 function writeVisiblePanelTabsToForm(raw = DEFAULT_VISIBLE_PANEL_TABS) {
   const selected = new Set(normalizeVisiblePanelTabs(raw));
+  // Restore saved enablement when reopening settings; new enablement still requires a password.
+  state.decryptConfigUnlocked = selected.has(PROTECTED_PANEL_TAB_VALUE);
   document.querySelectorAll('input[name="visibleTabs"]').forEach((input) => {
     if (input instanceof HTMLInputElement) {
-      input.checked = selected.has(input.value)
-        && (input.value !== PROTECTED_PANEL_TAB_VALUE || state.decryptConfigUnlocked);
+      input.checked = selected.has(input.value);
     }
   });
 }
@@ -575,7 +583,8 @@ function confirmProtectedTabPassword() {
   state.decryptConfigUnlocked = true;
   input.checked = true;
   closeTabPasswordModal();
-  setDecryptConfigVisibility(true, { notify: true });
+  setDecryptConfigVisibility(true);
+  showDecryptVisibilityMessage('验证通过，请保存以启用数据加解');
   setTabControlError(false);
   setTabControlStatus('验证通过，请保存', 'success');
 }
@@ -766,6 +775,7 @@ function renderDecryptConfig(config = state.decryptConfig) {
 }
 
 function enterDecryptConfigEditMode() {
+  state.decryptConfig = readDecryptConfigFromForm();
   state.decryptDraft = cloneDecryptConfig(state.decryptConfig);
   if (!state.decryptDraft.projects.length) {
     state.decryptDraft.projects.push(createEmptyDecryptProject());
@@ -795,6 +805,7 @@ async function saveDecryptConfig() {
   state.decryptDraft = null;
   state.decryptEditing = false;
   renderDecryptConfig(settings.decryptConfig);
+  if (state.savedForm) state.savedForm.decryptConfig = cloneDecryptConfig(settings.decryptConfig);
   setSaveStatus('解密配置已保存', 'success');
 }
 
@@ -934,18 +945,37 @@ function setRichTextMode(sourceMode, options = {}) {
 
 function readRichTextPoolFromForm() {
   if (!els.testDataRichText) return [];
-  if (state.richTextSourceMode) {
-    return linesToList(els.testDataRichText.value || '');
-  }
-  if (els.testDataRichTextEditor) {
+  if (!state.richTextSourceMode && els.testDataRichTextEditor) {
     syncRichTextEditorToSource();
-    return els.testDataRichText.value ? [els.testDataRichText.value] : [];
   }
-  return linesToList(els.testDataRichText.value || '');
+  const value = String(els.testDataRichText.value || '').trim();
+  if (state.richTextSampleIndex >= 0) {
+    state.richTextPool[state.richTextSampleIndex] = value;
+  } else if (value) {
+    state.richTextPool.push(value);
+    state.richTextSampleIndex = state.richTextPool.length - 1;
+    renderRichTextSampleOptions();
+  }
+  return state.richTextPool.filter((item) => item.trim());
 }
 
-function writeRichTextPoolToForm(pool = []) {
-  const source = listToLines(pool);
+function renderRichTextSampleOptions() {
+  if (!els.richTextSampleSelect) return;
+  els.richTextSampleSelect.replaceChildren();
+  state.richTextPool.forEach((_, index) => {
+    els.richTextSampleSelect.add(new Option(`样本 ${index + 1}`, String(index)));
+  });
+  if (!state.richTextPool.length) els.richTextSampleSelect.add(new Option('暂无样本', '-1'));
+  els.richTextSampleSelect.value = String(state.richTextSampleIndex);
+  els.richTextSampleSelect.disabled = !state.richTextPool.length;
+  if (els.richTextSampleRemove) els.richTextSampleRemove.disabled = state.richTextSampleIndex < 0;
+}
+
+function loadRichTextSample(index) {
+  state.richTextSampleIndex = index;
+  state.richTextSelectionRange = null;
+  renderRichTextSampleOptions();
+  const source = state.richTextPool[index] || '';
   if (els.testDataRichText) els.testDataRichText.value = source;
   if (!els.testDataRichTextEditor) return;
   try {
@@ -958,6 +988,11 @@ function writeRichTextPoolToForm(pool = []) {
     setRichTextMode(true, { sync: false });
     setRichTextError(`富文本源码转换失败：${formatRichTextError(error)}`);
   }
+}
+
+function writeRichTextPoolToForm(pool = []) {
+  state.richTextPool = (Array.isArray(pool) ? pool : []).map((item) => String(item));
+  loadRichTextSample(state.richTextPool.length ? 0 : -1);
 }
 
 function normalizeList(value = [], fallback = []) {
@@ -1067,12 +1102,10 @@ function normalizeTestDataLibrary(raw = {}, fallbackSettings = {}) {
         cn: normalizeList(rawPools.bankCard?.cn, defaultPools.bankCard?.cn),
         hk: normalizeList(rawPools.bankCard?.hk, defaultPools.bankCard?.hk)
       },
-      file: state.fileStore.length
-        ? buildFilePoolsFromStore(state.fileStore)
-        : {
-            ...createEmptyFilePools(),
-            ...(rawPools.file && typeof rawPools.file === 'object' ? rawPools.file : {})
-          }
+      file: {
+        ...createEmptyFilePools(),
+        ...(rawPools.file && typeof rawPools.file === 'object' ? rawPools.file : {})
+      }
     }
   };
 }
@@ -1276,10 +1309,7 @@ function writeForm(settings) {
   els.fillOptionalFields.checked = settings.fillOptionalFields !== false;
   els.paginateFillEnabled.checked = settings.paginateFillEnabled === true;
   writeVisiblePanelTabsToForm(settings.visiblePanelTabs);
-  setDecryptConfigVisibility(
-    state.decryptConfigUnlocked
-      && normalizeVisiblePanelTabs(settings.visiblePanelTabs).includes(PROTECTED_PANEL_TAB_VALUE)
-  );
+  setDecryptConfigVisibility(state.decryptConfigUnlocked);
   setTabControlError(false);
   setTabControlStatus('');
   els.debugLogs.checked = !!settings.debugLogs;
@@ -1681,18 +1711,27 @@ async function loadSettings() {
   }
   state.mockRules = Array.from(dedup.values());
   renderMockRules();
+  state.savedForm = cloneJson(readForm());
 }
 
 async function saveSettings(options = {}) {
   const normalizedRules = state.mockRules.map((item) => normalizeMockRule(item));
   const visiblePanelTabs = getValidatedVisiblePanelTabs();
-  const settings = mergeSettings({
+  const draft = {
     ...readForm(),
     visiblePanelTabs,
     mockRules: normalizedRules,
     mockRuleCenter: buildMockRuleCenterFromRules(normalizedRules)
-  });
+  };
+  for (const sample of draft.testDataLibrary.pools.richText) validateRichTextSource(sample);
+  const res = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
+  const current = mergeSettings(res[STORAGE_KEYS.SETTINGS] || {});
+  const settings = mergeSettings(mergeSettingsChanges(current, state.savedForm || {}, draft));
   await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: settings });
+  state.savedForm = cloneJson(draft);
+  state.decryptConfig = cloneDecryptConfig(settings.decryptConfig);
+  renderDecryptProjectOptions(state.decryptConfig);
+  state.savedForm.decryptConfig = cloneDecryptConfig(state.decryptConfig);
   setSaveStatus(options.statusMessage || `已保存 ${new Date().toLocaleTimeString()}`, 'success');
 }
 
@@ -1705,6 +1744,7 @@ async function saveVisiblePanelTabs() {
     visiblePanelTabs
   });
   await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: settings });
+  if (state.savedForm) state.savedForm.visiblePanelTabs = visiblePanelTabs.slice();
   setTabControlStatus('保存成功', 'success');
 }
 
@@ -1713,11 +1753,18 @@ async function saveTestDataEnabledChange() {
   const enabled = els.testDataEnabled.checked;
   setSaveStatus(enabled ? '正在开启测试数据池...' : '正在关闭测试数据池...', 'info');
   try {
-    await saveSettings({
-      statusMessage: enabled
+    const res = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
+    const settings = mergeSettings(res[STORAGE_KEYS.SETTINGS] || {});
+    settings.testDataLibrary.enabled = enabled;
+    settings.emailPoolEnabled = enabled;
+    await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: settings });
+    if (state.savedForm) {
+      state.savedForm.testDataLibrary.enabled = enabled;
+      state.savedForm.emailPoolEnabled = enabled;
+    }
+    setSaveStatus(enabled
         ? '已开启测试数据池，填充时将优先使用配置数据'
-        : '已关闭测试数据池，填充时将改用随机生成'
-    });
+        : '已关闭测试数据池，填充时将改用随机生成', 'success');
   } catch (error) {
     els.testDataEnabled.checked = !enabled;
     renderTestDataSummary(readTestDataLibraryFromForm());
@@ -1737,6 +1784,7 @@ async function savePaginateFillEnabledChange() {
       paginateFillEnabled: enabled
     });
     await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: settings });
+    if (state.savedForm) state.savedForm.paginateFillEnabled = enabled;
     setSaveStatus(enabled ? '已开启翻页填充' : '已关闭翻页填充', 'success');
   } catch (error) {
     els.paginateFillEnabled.checked = !enabled;
@@ -2746,6 +2794,7 @@ function renderFileList(files = []) {
 async function loadFileStore() {
   const data = await chrome.storage.local.get(FILE_STORE_KEY);
   renderFileList(data[FILE_STORE_KEY] || []);
+  if (state.savedForm) state.savedForm.testDataLibrary.pools.file = buildFilePoolsFromStore(state.fileStore);
 }
 
 async function consumePendingMockRuleSeed() {
@@ -2902,6 +2951,25 @@ if (els.paginateFillEnabled) {
   node.addEventListener('change', () => {
     renderTestDataSummary(readTestDataLibraryFromForm());
   });
+});
+
+els.richTextSampleSelect?.addEventListener('change', () => {
+  const index = Number(els.richTextSampleSelect.value);
+  readRichTextPoolFromForm();
+  loadRichTextSample(index);
+});
+
+els.richTextSampleAdd?.addEventListener('click', () => {
+  readRichTextPoolFromForm();
+  state.richTextPool.push('');
+  loadRichTextSample(state.richTextPool.length - 1);
+});
+
+els.richTextSampleRemove?.addEventListener('click', () => {
+  if (state.richTextSampleIndex < 0) return;
+  state.richTextPool.splice(state.richTextSampleIndex, 1);
+  loadRichTextSample(Math.min(state.richTextSampleIndex, state.richTextPool.length - 1));
+  renderTestDataSummary(readTestDataLibraryFromForm());
 });
 
 if (els.testDataRichTextEditor) {

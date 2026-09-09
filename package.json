@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build && node scripts/sync-extension.mjs",
+    "check:background-settings": "node scripts/check-background-settings.mjs",
+    "check:options-tabs": "node scripts/check-options-tab-persistence.mjs",
+    "check:persistence": "node scripts/check-persistence-merge.mjs && node scripts/check-settings-persistence.mjs",
     "check:cascader-address": "node scripts/check-cascader-address-regression.mjs",
     "check:framework-cascader": "node scripts/check-framework-cascader-routing.mjs",
     "check:detect": "node scripts/check-detect-engine.mjs",

@@ -1345,9 +1345,10 @@
   }
 
   async function setFillOptionalFields(panel, nextEnabled) {
-    const current = await getSettings();
+    const current = await getSettings({ strict: true });
     const nextSettings = { ...current, fillOptionalFields: nextEnabled };
-    await sendRuntimeMessage({ type: 'formpilotv2:set-settings', settings: nextSettings }, 10000, '保存填写范围');
+    const result = await sendRuntimeMessage({ type: 'formpilotv2:set-settings', settings: nextSettings }, 10000, '保存填写范围');
+    if (!result?.ok) throw new Error(result?.error || '保存填写范围失败');
     state.fillOptionalFields = nextEnabled;
     renderFillScopeToggle(panel, nextEnabled);
     appendStatus(panel, nextEnabled ? '填写范围：全部字段' : '填写范围：仅必填字段');
@@ -1355,21 +1356,24 @@
   }
 
   async function toggleFillOptionalFields(panel) {
-    const current = await getSettings();
+    const current = await getSettings({ strict: true });
     await setFillOptionalFields(panel, !(current.fillOptionalFields !== false));
   }
 
   async function switchProvider(panel, provider) {
     const nextProvider = ['heuristic', 'deepseek', 'openai', 'zhipu'].includes(provider) ? provider : 'heuristic';
-    state.provider = nextProvider;
-    renderProviderSelect(panel, nextProvider);
+    const previousProvider = state.provider;
     try {
-      const current = await getSettings();
+      const current = await getSettings({ strict: true });
       const nextSettings = { ...current, provider: nextProvider };
-      await sendRuntimeMessage({ type: 'formpilotv2:set-settings', settings: nextSettings }, 10000, '保存数据来源');
+      const result = await sendRuntimeMessage({ type: 'formpilotv2:set-settings', settings: nextSettings }, 10000, '保存数据来源');
+      if (!result?.ok) throw new Error(result?.error || '保存数据来源失败');
+      state.provider = nextProvider;
+      renderProviderSelect(panel, nextProvider);
       appendStatus(panel, `数据来源已切换为：${getProviderLabel(nextProvider)}`);
       setBadge(panel, `数据来源：${getProviderLabel(nextProvider)}`, 'success');
     } catch (error) {
+      renderProviderSelect(panel, previousProvider);
       appendStatus(panel, `切换数据来源失败：${error?.message || error}`);
       setBadge(panel, '数据来源切换失败', 'error');
     }
@@ -1393,8 +1397,8 @@
     const flowProjectInput = panel.querySelector('[data-role="api-flow-project"]');
     const flowEnvSelect = panel.querySelector('[data-role="api-flow-env"]');
     if (loopInput instanceof HTMLInputElement) loopInput.value = String(template?.loopCount || 1);
-    if (intervalInput instanceof HTMLInputElement) intervalInput.value = String(template?.intervalMs || 300);
-    if (retryInput instanceof HTMLInputElement) retryInput.value = String(template?.retryCount || 1);
+    if (intervalInput instanceof HTMLInputElement) intervalInput.value = String(template?.intervalMs ?? 300);
+    if (retryInput instanceof HTMLInputElement) retryInput.value = String(template?.retryCount ?? 1);
     if (flowProjectInput instanceof HTMLInputElement) {
       flowProjectInput.value = template ? normalizeApiProject(template.project) : '';
     }
@@ -2345,7 +2349,14 @@
     }
   }
 
-  async function getSettings() {
+  async function getSettings(options = {}) {
+    if (options.strict) {
+      const res = await sendRuntimeMessage({ type: 'formpilotv2:get-settings' }, 10000, '读取设置');
+      if (!res?.ok || !res.settings || typeof res.settings !== 'object') {
+        throw new Error(res?.error || '读取设置失败');
+      }
+      return res.settings;
+    }
     if (!isRuntimeAvailable()) return {};
     const res = await chrome.runtime.sendMessage({ type: 'formpilotv2:get-settings' }).catch(() => null);
     return res?.settings || {};

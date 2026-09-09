@@ -1,5 +1,6 @@
 import { STORAGE_KEYS } from './core/types.js';
 import { getTemplateStore } from './core/templateEngine.js';
+import { applyApiChanges, ENDPOINTS_KEY } from './core/templatePersistence.js';
 
 // ─── 工具 ─────────────────────────────────────────────────────────────────
 
@@ -265,8 +266,6 @@ async function handlePageTemplateAction(ev) {
 
 // ─── API 模板（极简） ──────────────────────────────────────────────────────
 
-const ENDPOINTS_KEY = 'formpilot_api_endpoints';
-
 const apiState = {
   endpoints: [],
   templates: [],
@@ -490,13 +489,10 @@ function renderStepList() {
   }).join('');
 }
 
-async function saveState() {
-  const store = await getTemplateStore();
-  store.api = deepClone(apiState.templates);
-  await chrome.storage.local.set({
-    [ENDPOINTS_KEY]: deepClone(apiState.endpoints),
-    [STORAGE_KEYS.TEMPLATES]: store
-  });
+async function saveState(changes) {
+  const saved = await applyApiChanges(changes);
+  apiState.endpoints = saved.endpoints;
+  apiState.templates = saved.templates;
 }
 
 async function loadState() {
@@ -508,9 +504,7 @@ async function loadState() {
 }
 
 async function loadApiTemplates() {
-  const store = await getTemplateStore();
-  apiState.templates = Array.isArray(store.api) ? store.api : [];
-  renderAll();
+  await loadState();
 }
 
 function renderAll() {
@@ -519,20 +513,21 @@ function renderAll() {
   renderStepList();
 }
 
-function onEndpointListClick(ev) {
+async function onEndpointListClick(ev) {
   const btn = ev.target.closest('button[data-action="delete-endpoint"]');
   if (!btn) return;
   const id = btn.getAttribute('data-id');
   if (!id) return;
-  apiState.endpoints = apiState.endpoints.filter((item) => item.id !== id);
-  apiState.templates = apiState.templates.map((tpl) => ({
-    ...tpl,
-    steps: (tpl.steps || []).filter((step) => step.endpointId !== id)
-  }));
+  try {
+    await saveState({ removedEndpointIds: [id] });
+  } catch (error) {
+    setStatus(`删除接口失败：${error.message || error}`);
+    return;
+  }
   if (apiState.editingTemplate) {
     apiState.editingTemplate.steps = (apiState.editingTemplate.steps || []).filter((step) => step.endpointId !== id);
   }
-  saveState().then(renderAll);
+  renderAll();
 }
 
 function onAddStep() {
@@ -594,8 +589,7 @@ async function onParseSaveEndpoint() {
       bodyObj: parsed.bodyObj,
       createdAt: Date.now()
     };
-    apiState.endpoints.unshift(item);
-    await saveState();
+    await saveState({ endpoints: [item] });
     renderAll();
     if (status) status.textContent = `已保存：${parsed.method} ${parsed.url}`;
     if ($('flowEndpointName')) $('flowEndpointName').value = '';
@@ -634,6 +628,8 @@ function buildPresetTemplates(endpointByKey = {}) {
 }
 
 async function onImportPreset() {
+  await loadState();
+  const addedEndpoints = [];
   const endpointByKey = {};
   const signatureMap = new Map(apiState.endpoints.map((ep) => [`${String(ep.method || '').toUpperCase()} ${ep.url}`, ep]));
 
@@ -810,19 +806,14 @@ async function onImportPreset() {
       bodyObj: deepClone(preset.bodyObj || {}),
       createdAt: Date.now()
     };
-    apiState.endpoints.unshift(item);
+    addedEndpoints.push(item);
     signatureMap.set(signature, item);
     endpointByKey[preset.key] = item;
   }
 
   const presetTemplates = buildPresetTemplates(endpointByKey);
-  for (const tpl of presetTemplates) {
-    if (!apiState.templates.some((item) => item.name === tpl.name)) {
-      apiState.templates.unshift(tpl);
-    }
-  }
-
-  await saveState();
+  const addedTemplates = presetTemplates.filter((tpl) => !apiState.templates.some((item) => item.name === tpl.name));
+  await saveState({ endpoints: addedEndpoints, templates: addedTemplates });
   renderAll();
   if ($('flowParseStatus')) $('flowParseStatus').textContent = '已导入注册预置接口与模板';
   if ($('flowRunStatus')) $('flowRunStatus').textContent = '预置模板已刷新';
@@ -850,11 +841,7 @@ async function onSaveTemplate() {
   tpl.name = name;
   tpl.loop = loop;
   const payload = deepClone(tpl);
-  const idx = apiState.templates.findIndex((item) => item.id === payload.id);
-  if (idx >= 0) apiState.templates[idx] = payload;
-  else apiState.templates.unshift(payload);
-
-  await saveState();
+  await saveState({ templates: [payload] });
   renderEndpointSelects();
   $('flowRunStatus').textContent = '模板已保存';
 }
@@ -875,9 +862,8 @@ function onLoadTemplate() {
 async function onDeleteTemplate() {
   const id = String($('flowTemplateSelect')?.value || '');
   if (!id) return;
-  apiState.templates = apiState.templates.filter((item) => item.id !== id);
+  await saveState({ removedTemplateIds: [id] });
   if (apiState.editingTemplate && apiState.editingTemplate.id === id) newTemplate();
-  await saveState();
   renderEndpointSelects();
   $('flowRunStatus').textContent = '模板已删除';
 }
@@ -938,8 +924,8 @@ async function runOneStep(step, stepIndex, retry) {
 async function runTemplate(tpl, params = {}) {
   if (apiState.running) return;
   const count = Math.max(1, Number(params.count || tpl.loop?.count || 1));
-  const intervalMs = Math.max(0, Number(params.intervalMs || tpl.loop?.intervalMs || 300));
-  const retry = Math.max(0, Number(params.retry || tpl.loop?.retry || 0));
+  const intervalMs = Math.max(0, Number(params.intervalMs ?? tpl.loop?.intervalMs ?? 300));
+  const retry = Math.max(0, Number(params.retry ?? tpl.loop?.retry ?? 0));
 
   apiState.running = true;
   apiState.stopRequested = false;

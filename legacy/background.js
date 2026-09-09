@@ -1393,7 +1393,7 @@ async function upsertMapping(pathKey, field = {}, kind = '') {
   return { ok: true, pathKey, fingerprint: fp, kind: nextKind, mapping: bucket.fields, bucket };
 }
 
-const PANEL_TAB_VALUES = ['ui', 'qr', 'api'];
+const PANEL_TAB_VALUES = ['ui', 'qr', 'api', 'crypto'];
 const DEFAULT_VISIBLE_PANEL_TABS = ['ui', 'qr'];
 const OPENAI_REASONING_EFFORT_VALUES = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 const OPENAI_LEGACY_DEFAULT_MODEL = 'gpt-4.1-mini';
