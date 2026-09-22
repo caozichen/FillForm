@@ -31,8 +31,17 @@ function isBankCardHint(hint = '') {
   return BANK_CARD_HINT_RE.test(text) && !ID_DOCUMENT_HINT_RE.test(text);
 }
 
+function stripBusinessIdentifierHints(text) {
+  return String(text || '').replace(
+    /统一社会信用代码|統一社會信用代碼|社会信用代码|社會信用代碼|信用代码|信用代碼|统一信用代码|統一信用代碼|组织机构代码|組織機構代碼|机构代码|機構代碼|证照编号|證照編號|纳税人识别号|納税人識別號/gi,
+    ' '
+  );
+}
+
 function isLikelyEditorControl(field) {
-  const hint = `${field.label || ''} ${field.placeholder || ''} ${field.context || ''} ${field.reason || ''}`;
+  const hint = stripBusinessIdentifierHints(
+    `${field.label || ''} ${field.placeholder || ''} ${field.context || ''} ${field.reason || ''}`
+  );
   return EDITOR_CONTROL_HINT_RE.test(hint);
 }
 
@@ -231,6 +240,7 @@ function correctField(field) {
   const hasChoiceOptions = Array.isArray(corrected.options) && corrected.options.length > 0;
   const preserveStructuralKind =
     corrected.kind === FIELD_KINDS.ADDRESS_COMPONENT ||
+    corrected.kind === FIELD_KINDS.FILE ||
     hasStructuredDateEvidence(corrected) ||
     (
       (corrected.kind === FIELD_KINDS.RADIO_GROUP || corrected.kind === FIELD_KINDS.CHECKBOX_GROUP) &&

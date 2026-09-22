@@ -1,5 +1,5 @@
 (function initFormPilotV2Fill() {
-  const FORM_PILOT_V2_FILL_BUILD = '2026-08-28-cascader-address-01';
+  const FORM_PILOT_V2_FILL_BUILD = '2026-09-22-select-file-01';
   if (window.FormPilotV2Fill?.__build === FORM_PILOT_V2_FILL_BUILD) return;
 
   const utils = window.FormPilotV2Utils || {};
@@ -170,12 +170,42 @@
     return normText(el.textContent || el.getAttribute('aria-label') || '');
   }
 
+  function compactDisplayText(value = '') {
+    return normText(value).replace(/\s+/g, '');
+  }
+
+  function isDesensitizedDisplayValue(value = '') {
+    const text = compactDisplayText(value);
+    if (!/[*＊•●※]/.test(text)) return false;
+    const visible = text.replace(/[*＊•●※]+/g, '');
+    if (!visible) return text.length >= 2;
+    return true;
+  }
+
+  function isDesensitizedDisplayOf(actual, expected) {
+    const shown = compactDisplayText(actual);
+    const source = compactDisplayText(isLikelyHtml(expected) ? richTextHtmlToText(expected) : expected);
+    if (!shown || !source || !isDesensitizedDisplayValue(shown)) return false;
+    const parts = shown.split(/[*＊•●※]+/).filter(Boolean);
+    if (!parts.length) return true;
+    let cursor = 0;
+    for (const part of parts) {
+      const index = source.indexOf(part, cursor);
+      if (index < 0) return false;
+      cursor = index + part.length;
+    }
+    const first = parts[0];
+    const last = parts[parts.length - 1];
+    return source.startsWith(first) || source.endsWith(last);
+  }
+
   function verifyTextLikeValue(el, expectedValue) {
     const expected = isLikelyHtml(expectedValue) ? richTextHtmlToText(expectedValue) : normText(expectedValue);
     if (!expected) return true;
     const actual = readElementDisplayValue(el);
     if (!actual) return false;
-    return actual === expected || actual.includes(expected) || expected.includes(actual);
+    if (actual === expected || actual.includes(expected) || expected.includes(actual)) return true;
+    return isDesensitizedDisplayOf(actual, expected);
   }
 
   function normalizeChoiceText(text) {
@@ -1050,6 +1080,14 @@
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }
     el.dispatchEvent(new Event('change', { bubbles: true }));
+    // 派发 blur 以触发 Element Plus / Ant Design Vue / Naive UI 等表单控件重新校验，
+    // 清除前一次提交留下的残留 is-error 状态（否则 verifySingleFieldCompletion 会把
+    // 已写入成功的字段误判为失败，甚至导致 Vue 受控模型回滚输入）。
+    try {
+      el.dispatchEvent(new Event('blur', { bubbles: true }));
+    } catch {
+      // 忽略：部分宿主环境对 blur 事件有限制。
+    }
   }
 
   function collectOpenPanels() {
@@ -1755,6 +1793,32 @@
     return el;
   }
 
+  const SELECT_POPUP_SELECTOR = [
+    '.el-select-dropdown',
+    '.el-select__popper',
+    '.el-popper',
+    '.ant-select-dropdown',
+    '.arco-select-dropdown',
+    '.arco-trigger-popup',
+    '.semi-select-dropdown',
+    '.n-base-select-menu',
+    '.t-select__dropdown',
+    '[role="listbox"]',
+    '[role="menu"]'
+  ].join(', ');
+
+  function isInsideSelectPopup(node) {
+    return node instanceof Element && !!node.closest(SELECT_POPUP_SELECTOR);
+  }
+
+  function selectDisplayRootWithoutPopup(displayRoot) {
+    if (!(displayRoot instanceof Element)) return null;
+    if (!displayRoot.querySelector(SELECT_POPUP_SELECTOR)) return displayRoot;
+    const clone = displayRoot.cloneNode(true);
+    clone.querySelectorAll(SELECT_POPUP_SELECTOR).forEach((node) => node.remove());
+    return clone;
+  }
+
   function readSelectLikeDisplayText(triggerEl) {
     if (!(triggerEl instanceof Element)) return '';
     const displayRoot = triggerEl.closest(
@@ -1788,10 +1852,12 @@
       push(selectedValues, displayRoot.getAttribute('data-selected-value') || '');
     }
 
-    const labels = displayRoot.querySelectorAll?.(
-      '.arco-select-view-value, .ant-select-selection-item, .el-select__selected-item, .semi-select-selection-text, .n-base-selection-label, [data-slot=\"select-value\"], [class*=\"select-value\"], [class*=\"selected\"]'
+    const displaySource = selectDisplayRootWithoutPopup(displayRoot) || displayRoot;
+    const labels = displaySource.querySelectorAll?.(
+      '.arco-select-view-value, .ant-select-selection-item, .el-select__selected-item, .el-select__tags-text, .semi-select-selection-text, .n-base-selection-label, [data-slot=\"select-value\"], [class*=\"select-value\"]'
     ) || [];
     labels.forEach((node) => {
+      if (isInsideSelectPopup(node)) return;
       push(selectedValues, node.textContent || '');
       push(selectedValues, node.getAttribute?.('data-value') || '');
       if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) {
@@ -1801,6 +1867,7 @@
 
     const nestedInputs = displayRoot.querySelectorAll?.('input, textarea, select') || [];
     nestedInputs.forEach((node) => {
+      if (isInsideSelectPopup(node)) return;
       if (node instanceof HTMLSelectElement) {
         push(selectedValues, node.options?.[node.selectedIndex]?.textContent || '');
         push(selectedValues, node.value || '');
@@ -1818,7 +1885,7 @@
       }
     });
 
-    push(fallbackValues, displayRoot.textContent || triggerEl.textContent || '');
+    push(fallbackValues, displaySource.textContent || '');
 
     const clean = (values) => values
       .map((item) => normText(String(item || '').replace(/[▾▼▲▽△]/g, ' ')))
@@ -2436,6 +2503,49 @@
     return null;
   }
 
+  function collectEmbeddedSelectOptions(triggerEl) {
+    const root = triggerEl?.closest?.('.el-select, .ant-select, .arco-select, .semi-select, .n-select') || triggerEl;
+    if (!(root instanceof Element)) return [];
+    const nodes = Array.from(root.querySelectorAll(
+      '.el-select-dropdown__item, .ant-select-item-option, .arco-select-option, .semi-select-option, .n-base-select-option, [role="option"]'
+    ));
+    const dedup = new Set();
+    return nodes.map((node) => {
+      const clickable = resolveOptionClickableNode(node) || node;
+      if (!(clickable instanceof HTMLElement) || dedup.has(clickable)) return null;
+      if (clickable.classList.contains('is-disabled') || clickable.getAttribute('aria-disabled') === 'true') return null;
+      dedup.add(clickable);
+      const text = normText(clickable.textContent || clickable.getAttribute('aria-label') || '');
+      if (!text || /暂无数据|無資料|loading|加载中|載入中|请选择|請選擇/i.test(text)) return null;
+      return {
+        node: clickable,
+        text,
+        value: normText(clickable.getAttribute('data-value') || clickable.getAttribute('value') || ''),
+        aliases: collectOptionTexts(clickable)
+      };
+    }).filter(Boolean);
+  }
+
+  async function clickEmbeddedSelectOption(buttonEl, targetText, aliases, field, beforeText) {
+    const embedded = collectEmbeddedSelectOptions(buttonEl);
+    if (!embedded.length) return null;
+    let picked = chooseOption(embedded, targetText, aliases);
+    if (!picked) picked = pickAddressFallbackOption(embedded, field);
+    if (!picked) picked = embedded.find((item) => item.text && !isPlaceholderDisplayText(item.text)) || null;
+    if (!picked) return null;
+    fireOptionClick(picked.node);
+    await sleep(140);
+    const selectedText = normText(readSelectLikeDisplayText(buttonEl) || '');
+    const changed = normalizeChoiceText(selectedText) !== normalizeChoiceText(beforeText || '');
+    if (!selectedText || isPlaceholderDisplayText(selectedText) || !changed) return null;
+    return {
+      ok: true,
+      reason: '已点选页面内下拉项',
+      selectedText,
+      targetMatched: !normText(targetText) || matchesDisplayText(selectedText, [targetText, ...aliases])
+    };
+  }
+
   async function selectComboboxOption(buttonEl, targetText = '', field = null, settings = {}) {
     if (!buttonEl) return { ok: false, reason: '下拉触发器不存在' };
 
@@ -2493,6 +2603,8 @@
       if (forceSimpleCombobox && !strictAddressTarget && beforeText && !isPlaceholderDisplayText(beforeText)) {
         return { ok: true, reason: '地址下拉已有有效值，保持不变', selectedText: beforeText, targetMatched: !targetText };
       }
+      const embeddedResult = await clickEmbeddedSelectOption(buttonEl, targetText, aliases, field, beforeText);
+      if (embeddedResult) return embeddedResult;
       return { ok: false, reason: '未打开下拉面板', selectedText: '' };
     }
     const cascadeLike =
@@ -5077,6 +5189,10 @@
     if (!text) {
       return { ok: true };
     }
+    // 失焦脱敏会把已写入的值改成 11***11 / 138****5678，不应再按原长度和数字格式判失败。
+    if (isDesensitizedDisplayValue(text)) {
+      return { ok: true, masked: true };
+    }
     const minLength = toFiniteNumber(constraints?.minLength);
     const maxLength = toFiniteNumber(constraints?.maxLength);
     if (minLength != null && minLength > 0 && text.length < minLength) {
@@ -5484,12 +5600,24 @@
     let ok = value.length > 0;
     const validationError = readValidationErrorText(el);
     if (validationError) {
-      return {
-        id: field.id,
-        kind: field.kind,
-        ok: false,
-        reason: validationError
-      };
+      // 仅当值为空或违反约束时，才把表单项的报错当作失败原因。
+      // 否则视为前一次提交失败留下的陈旧必填校验提示（如 "请输入统一社会信用代码"），
+      // 不应把已经写入并通过约束的字段误判为失败。
+      const staleConstraintCheck = ok
+        ? verifyValueAgainstConstraints(
+            value,
+            field?.constraints || {},
+            `${field?.label || ''} ${field?.placeholder || ''} ${field?.context || ''}`
+          )
+        : { ok: false };
+      if (!ok || !staleConstraintCheck.ok) {
+        return {
+          id: field.id,
+          kind: field.kind,
+          ok: false,
+          reason: validationError
+        };
+      }
     }
     if (!ok && !required && shouldAllowOptionalEmpty(settings)) {
       return {
@@ -5753,7 +5881,10 @@
     __test: {
       buildSignatureStrokePaths,
       resolveDateFieldMode,
-      normalizeTimeText
+      normalizeTimeText,
+      isDesensitizedDisplayValue,
+      isDesensitizedDisplayOf,
+      verifyValueAgainstConstraints
     },
     __build: FORM_PILOT_V2_FILL_BUILD
   };

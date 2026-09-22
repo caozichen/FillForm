@@ -212,6 +212,45 @@ const nameWithPollutedContextFixture = {
   }
 };
 
+const creditCodeFixture = {
+  id: 'unified-social-credit-code',
+  kind: 'companyId',
+  label: '统一社会信用代码',
+  placeholder: '请输入统一社会信用代码',
+  context: '统一社会信用代码 0/20 请输入统一社会信用代码',
+  selector: 'input[placeholder="请输入统一社会信用代码"]',
+  domId: 'credit-code',
+  score: 0.92,
+  confidence: 0.92,
+  meta: { locatorStability: 1 }
+};
+
+const idPhotoUploadFixture = {
+  id: 'agent-id-portrait',
+  kind: 'file',
+  label: '经办人身份证头像面',
+  placeholder: '',
+  context: '经办人身份证头像面 经办人身份证头像面',
+  selector: 'input[name="file"]',
+  domId: 'agent-id-portrait',
+  score: 0.87,
+  confidence: 0.87,
+  meta: { locatorStability: 1 }
+};
+
+const editorCodeButtonFixture = {
+  id: 'editor-code-button',
+  kind: 'text',
+  label: '代码',
+  placeholder: '',
+  context: '代码',
+  selector: 'button.ql-code',
+  domId: 'editor-code-button',
+  score: 0.62,
+  confidence: 0.62,
+  meta: { locatorStability: 1 }
+};
+
 const contextOnlyEmailFixture = {
   id: 'context-only-email',
   kind: 'text',
@@ -269,6 +308,18 @@ for (const engine of engines) {
 
   const normalizedContextOnlyEmail = engine.normalize([structuredClone(contextOnlyEmailFixture)]);
   assert.equal(normalizedContextOnlyEmail[0]?.kind, 'email', `${engine.name}: 无直接题干时未使用上下文兜底识别邮箱`);
+
+  const normalizedCreditCode = engine.normalize([structuredClone(creditCodeFixture)]);
+  assert.equal(normalizedCreditCode.length, 1, `${engine.name}: 统一社会信用代码被当成编辑器控件丢弃`);
+  assert.equal(normalizedCreditCode[0]?.kind, 'companyId', `${engine.name}: 统一社会信用代码未被识别为企业编号`);
+  assert.equal(engine.prepare(normalizedCreditCode).fields.length, 1, `${engine.name}: 统一社会信用代码未进入填充计划`);
+
+  const normalizedIdPhoto = engine.normalize([structuredClone(idPhotoUploadFixture)]);
+  assert.equal(normalizedIdPhoto.length, 1, `${engine.name}: 身份证照片上传被丢弃`);
+  assert.equal(normalizedIdPhoto[0]?.kind, 'file', `${engine.name}: 身份证照片上传被改判为证件号`);
+
+  const normalizedEditorCode = engine.normalize([structuredClone(editorCodeButtonFixture)]);
+  assert.equal(normalizedEditorCode.length, 0, `${engine.name}: 编辑器“代码”按钮未被抑制`);
 }
 
 globalThis.window = {};
@@ -437,6 +488,24 @@ assert.match(String(birthdayYmValue), /^\d{4}-\d{2}-\d{2}$/, 'data: 年月生日
 assert.match(String(birthdayMdValue), /^\d{4}-\d{2}-\d{2}$/, 'data: 月日生日未生成日期');
 
 await import('../public/content/fill.js');
+const isDesensitizedDisplayOf = window.FormPilotV2Fill?.__test?.isDesensitizedDisplayOf;
+const verifyValueAgainstConstraints = window.FormPilotV2Fill?.__test?.verifyValueAgainstConstraints;
+assert.equal(typeof isDesensitizedDisplayOf, 'function', 'fill: 脱敏显示判断未暴露');
+assert.equal(isDesensitizedDisplayOf('11***11', '110000199001011111'), true, 'fill: 11***11 未识别为原值的脱敏显示');
+assert.equal(isDesensitizedDisplayOf('138****5678', '13812345678'), true, 'fill: 手机号掩码未识别');
+assert.equal(isDesensitizedDisplayOf('6222 **** **** 1234', '6222021234561234'), true, 'fill: 带空格的卡号掩码未识别');
+assert.equal(isDesensitizedDisplayOf('****', '13812345678'), true, 'fill: 全星号脱敏未识别');
+assert.equal(isDesensitizedDisplayOf('99***00', '13812345678'), false, 'fill: 无关掩码被当成原值');
+assert.equal(
+  verifyValueAgainstConstraints('11***11', { numericLike: true, minLength: 11, pattern: '\\d{11}' }, '手机号').ok,
+  true,
+  'fill: 脱敏显示被数字或长度约束判失败'
+);
+assert.equal(
+  verifyValueAgainstConstraints('abc', { numericLike: true }, '数字').ok,
+  false,
+  'fill: 非数字值不再被约束拦截'
+);
 const resolveDateFieldMode = window.FormPilotV2Fill?.__test?.resolveDateFieldMode;
 const normalizeTimeText = window.FormPilotV2Fill?.__test?.normalizeTimeText;
 const buildSignatureStrokePaths = window.FormPilotV2Fill?.__test?.buildSignatureStrokePaths;
